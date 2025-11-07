@@ -1,0 +1,5 @@
+{ 
+  "name": "Restaurant AI Assistant",
+  "description": "An AI-powered chat application that acts as a restaurant assistant, helping users find meals from the menu and place orders. It uses Google Gemini with function calling to interact with a simulated restaurant backend.",
+  "requestFramePermissions": []
+}
