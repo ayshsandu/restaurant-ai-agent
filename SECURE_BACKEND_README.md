@@ -45,6 +45,21 @@ ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 
 **Get your API key**: https://makersuite.google.com/app/apikey
 
+#### Optional: Configure OAuth
+
+If your MCP service requires OAuth authentication, add these variables:
+
+```env
+MCP_OAUTH_CLIENT_ID=your_oauth_client_id
+MCP_OAUTH_CLIENT_SECRET=your_oauth_client_secret
+MCP_OAUTH_REDIRECT_URL=http://localhost:3001/api/oauth/callback
+MCP_OAUTH_SCOPE=mcp:tools
+MCP_AUTHORIZATION_URL=https://your-oauth-provider.com/oauth/authorize
+MCP_OAUTH_TOKEN_ENDPOINT=https://your-oauth-provider.com/oauth/token
+```
+
+**OAuth Flow**: When a new chat session is created and OAuth is required, the authorization URL is automatically included in the first chat response. The user must complete authorization before continuing the conversation. Upon successful authorization, the authorization code is automatically exchanged for access tokens.
+
 ### 3. Start the Backend
 
 ```bash
@@ -98,6 +113,27 @@ const response = await fetch('http://localhost:3001/api/chat', {
 });
 ```
 
+### OAuth Endpoints (Optional)
+
+If MCP OAuth is configured, the following endpoints are available:
+
+- `GET /api/oauth/callback` - OAuth callback endpoint for authorization codes
+- `POST /api/oauth/authorize` - Manual OAuth authorization flow initiation (optional)
+
+**OAuth Flow**: When a new chat session is created and OAuth is required, the authorization URL is automatically included in the first chat response. The user must complete authorization before continuing the conversation.
+
+```javascript
+// Chat response when authorization is required
+{
+  "success": true,
+  "response": "I need to authenticate with the restaurant system...",
+  "authorizationRequired": true,
+  "authorizationUrl": "https://oauth-provider.com/authorize?...",
+  "sessionId": "session-123",
+  "timestamp": "2025-01-08T..."
+}
+```
+
 ## Key Changes Made
 
 ### 1. Created Secure Backend (`server/`)
@@ -128,6 +164,14 @@ PORT=3001
 NODE_ENV=development
 MCP_SERVICE_URL=http://localhost:8000/mcp
 ALLOWED_ORIGINS=http://localhost:5173
+
+# OAuth Configuration (optional)
+MCP_OAUTH_CLIENT_ID=your_oauth_client_id
+MCP_OAUTH_CLIENT_SECRET=your_oauth_client_secret
+MCP_OAUTH_REDIRECT_URL=http://localhost:3001/api/oauth/callback
+MCP_OAUTH_SCOPE=mcp:tools
+MCP_AUTHORIZATION_URL=https://your-oauth-provider.com/oauth/authorize
+MCP_OAUTH_TOKEN_ENDPOINT=https://your-oauth-provider.com/oauth/token
 ```
 
 ### Frontend (optional .env)

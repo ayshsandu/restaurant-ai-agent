@@ -8,6 +8,8 @@ export interface ChatResponse {
   error?: string;
   details?: string;
   timestamp?: string;
+  authorizationRequired?: boolean;
+  authorizationUrl?: string;
 }
 
 export class ApiService {
@@ -87,7 +89,12 @@ export class ApiService {
     return this.makeRequest('/health');
   }
 
-  public async sendChatMessage(message: string, sessionId?: string): Promise<{ response: string; sessionId: string }> {
+  public async sendChatMessage(message: string, sessionId?: string): Promise<{ 
+    response: string; 
+    sessionId: string;
+    authorizationRequired?: boolean;
+    authorizationUrl?: string;
+  }> {
     // Input validation
     if (!message || typeof message !== 'string') {
       throw new Error('Message must be a non-empty string');
@@ -130,6 +137,8 @@ export class ApiService {
       return {
         response: responseText,
         sessionId: responseSessionId,
+        authorizationRequired: response.authorizationRequired,
+        authorizationUrl: response.authorizationUrl,
       };
     } catch (error) {
       // Re-throw with more context

@@ -10,6 +10,9 @@ export interface Message {
   role: MessageRole;
   text: string;
   timestamp?: string;
+  authorizationRequired?: boolean;
+  authorizationUrl?: string;
+  waitingForAuth?: boolean;
 }
 
 export interface MenuItem {
@@ -40,6 +43,8 @@ export interface ChatSuccessResponse {
   response: string;
   sessionId: string;
   timestamp: string;
+  authorizationRequired?: boolean;
+  authorizationUrl?: string;
 }
 
 export type ChatResponse = ChatSuccessResponse | ApiError;

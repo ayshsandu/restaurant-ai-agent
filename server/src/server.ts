@@ -4,6 +4,9 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { GeminiService } from './services/geminiService.js';
+import { AuthorizationCodeOAuthProvider } from './services/simpleOAuthProvider.js';
+// import {AuthorizationCodeOAuthProvider} from './services/oauthProvider.js';
+
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -62,21 +65,6 @@ app.use('/api/', createRateLimit(15 * 60 * 1000, 100, 'Too many API requests fro
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// Session store with cleanup mechanism
-const chatSessions = new Map<string, { session: any; lastActivity: number; }>();
-const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
-
-// Clean up expired sessions periodically
-setInterval(() => {
-    const now = Date.now();
-    for (const [sessionId, data] of chatSessions.entries()) {
-        if (now - data.lastActivity > SESSION_TIMEOUT) {
-            chatSessions.delete(sessionId);
-            console.log(`Cleaned up expired session: ${sessionId}`);
-        }
-    }
-}, 60 * 60 * 1000); // Clean every hour
-
 // Initialize Gemini service
 let geminiService: GeminiService;
 
@@ -91,11 +79,12 @@ try {
   if (!mcpServiceUrl) {
     throw new Error('MCP_SERVER_URL environment variable is required');
   }
-  
+
+  // Initialize Gemini service without global OAuth provider
   geminiService = new GeminiService(apiKey, mcpServiceUrl);
   console.log('Gemini service initialized successfully');
 } catch (error) {
-  console.error('Failed to initialize Gemini service:', error);
+  console.error('Failed to initialize services:', error);
   process.exit(1);
 }
 
@@ -108,8 +97,8 @@ app.get('/api/health', (req, res) => {
     version: process.env.npm_package_version || '1.0.0',
     environment: process.env.NODE_ENV || 'development',
     sessions: {
-      active: chatSessions.size,
-      maxAge: SESSION_TIMEOUT / (60 * 60 * 1000) + ' hours'
+      active: geminiService.getSessionCount(),
+      maxAge: '24 hours'
     }
   };
 
@@ -123,17 +112,65 @@ app.get('/api/sessions/:sessionId', (req, res) => {
   }
 
   const { sessionId } = req.params;
-  const sessionData = chatSessions.get(sessionId);
+  const sessionInfo = geminiService.getSessionInfo(sessionId);
 
-  if (!sessionData) {
+  if (!sessionInfo) {
     return res.status(404).json({ error: 'Session not found' });
   }
 
   res.json({
     sessionId,
-    lastActivity: new Date(sessionData.lastActivity).toISOString(),
-    age: Date.now() - sessionData.lastActivity
+    lastActivity: new Date(sessionInfo.lastActivity).toISOString(),
+    age: sessionInfo.age
   });
+});
+
+// OAuth callback endpoint
+/**
+ * GET /api/oauth/callback
+ * Handles OAuth authorization code callback
+ *
+ * @param {string} code - The authorization code from the OAuth provider
+ * @param {string} state - The state parameter containing session ID for CSRF protection
+ * @param {string} error - Error parameter if authorization failed
+ * @returns {Object} Success or error response
+ */
+app.get('/api/oauth/callback', async (req, res) => {
+  try {
+    const { code, state, error, error_description } = req.query;
+
+    const result = await geminiService.asynchandleOAuthCallback(
+      code as string | undefined,
+      state as string | undefined,
+      error as string | undefined,
+      error_description as string | undefined
+    );
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: result.message,
+        sessionId: result.sessionId,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(result.error === 'Authorization failed' ? 400 : 500).json({
+        success: false,
+        error: result.error,
+        details: result.details
+      });
+    }
+
+  } catch (error) {
+    console.error('Error handling OAuth callback:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process OAuth callback',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
+  }
 });
 
 // Chat endpoint
@@ -183,18 +220,30 @@ app.post('/api/chat', async (req, res) => {
     }
 
     // Get or create chat session
-    let sessionData = chatSessions.get(currentSessionId);
+    let sessionData = geminiService.getChatSession(currentSessionId);
+    let isNewSession = false;
     if (!sessionData) {
-      const chatSession = await geminiService.createChatSession();
-      sessionData = {
-        session: chatSession,
-        lastActivity: Date.now()
-      };
-      chatSessions.set(currentSessionId, sessionData);
+      isNewSession = true;
+
+      // Create chat session with session-specific OAuth provider
+      const chatSessionResult = await geminiService.createChatSession(currentSessionId);
+
+      if (chatSessionResult.type === 'oauth_required') {
+        // OAuth is required - return authorization information
+        return res.json({
+          success: true,
+          response: chatSessionResult.message,
+          authorizationRequired: true,
+          authorizationUrl: chatSessionResult.authorizationUrl,
+          sessionId: currentSessionId,
+          timestamp: new Date().toISOString(),
+          waitingForAuth: true
+        });
+      }
+
+      // OAuth not required - session was created and stored internally
+      sessionData = geminiService.getChatSession(currentSessionId);
       console.log('Created new chat session for:', currentSessionId);
-    } else {
-      // Update last activity
-      sessionData.lastActivity = Date.now();
     }
 
     console.log('Received chat request:', {
@@ -202,13 +251,17 @@ app.post('/api/chat', async (req, res) => {
       message: sanitizedMessage.substring(0, 100) + '...'
     });
 
-    const response = await geminiService.runChat(sanitizedMessage, sessionData.session);
+    const response = await geminiService.runChat(sanitizedMessage, currentSessionId);
 
     res.json({
       success: true,
       response: response.text,
       sessionId: currentSessionId,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      ...(response.authorizationRequired && {
+        authorizationRequired: true,
+        authorizationUrl: response.authorizationUrl
+      })
     });
 
   } catch (error) {
@@ -277,7 +330,7 @@ const server = app.listen(PORT, () => {
   console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
   console.log(`💬 Chat endpoint: http://localhost:${PORT}/api/chat`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📊 Active sessions: ${chatSessions.size}`);
+  console.log(`📊 Active sessions: ${geminiService.getSessionCount()}`);
 });
 
 // Graceful shutdown

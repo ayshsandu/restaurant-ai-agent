@@ -98,6 +98,20 @@ const App: React.FC = memo(() => {
                 localStorage.setItem('chatSessionId', result.sessionId);
             }
 
+            // Handle authorization requirement
+            if (result.authorizationRequired && result.authorizationUrl) {
+                const authMessage: Message = {
+                    id: generateMessageId('auth-'),
+                    role: MessageRole.MODEL,
+                    text: result.response,
+                    authorizationRequired: true,
+                    authorizationUrl: result.authorizationUrl,
+                    waitingForAuth: (result as any).waitingForAuth || false
+                };
+                setMessages(prev => [...prev, authMessage]);
+                return;
+            }
+
             const newBotMessage: Message = {
                 id: generateMessageId('bot-'),
                 role: MessageRole.MODEL,
