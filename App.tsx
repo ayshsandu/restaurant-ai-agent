@@ -6,10 +6,10 @@ import ChatInput from './components/ChatInput';
 import { Message, MessageRole } from './types';
 import { apiService } from './services/apiService';
 
-const INITIAL_MESSAGE: Message = {
-    id: 'initial',
+const WELCOME_MESSAGE: Message = {
+    id: 'welcome',
     role: MessageRole.MODEL,
-    text: "Welcome to our restaurant! How can I help you today? You can ask me to see the menu or place an order."
+    text: "Welcome to our restaurant!"
 };
 
 const CONNECTION_ERROR_MESSAGE: Message = {
@@ -19,12 +19,13 @@ const CONNECTION_ERROR_MESSAGE: Message = {
 };
 
 const App: React.FC = memo(() => {
-    const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
+    const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
     const [isLoading, setIsLoading] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
     const [sessionId, setSessionId] = useState<string | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const initializedRef = useRef(false);
 
     // Generate consistent message IDs
     const generateMessageId = useCallback((prefix: string = '') => {
@@ -41,6 +42,9 @@ const App: React.FC = memo(() => {
     }, [messages, scrollToBottom]);
 
     useEffect(() => {
+        if (initializedRef.current) return;
+        initializedRef.current = true;
+
         // Check backend connection on app start
         checkBackendConnection();
 
@@ -56,12 +60,14 @@ const App: React.FC = memo(() => {
             await apiService.healthCheck();
             setConnectionStatus('connected');
             console.log('Backend connection established');
+            // Send initial message after connection is established
+            await sendInitialMessage();
         } catch (error) {
             setConnectionStatus('disconnected');
             console.error('Backend connection failed:', error);
 
             // Add a system message about connection issues
-            setMessages(prev => [prev[0], CONNECTION_ERROR_MESSAGE]);
+            setMessages([WELCOME_MESSAGE, CONNECTION_ERROR_MESSAGE]);
         }
     }, []);
 
@@ -70,6 +76,44 @@ const App: React.FC = memo(() => {
         role: MessageRole.MODEL,
         text
     }), [generateMessageId]);
+
+    const sendInitialMessage = useCallback(async () => {
+        try {
+            const result = await apiService.sendChatMessage("Hello", sessionId || undefined);
+
+            // Update session ID if it was newly generated
+            if (result.sessionId && result.sessionId !== sessionId) {
+                setSessionId(result.sessionId);
+                localStorage.setItem('chatSessionId', result.sessionId);
+            }
+
+            // Handle authorization requirement
+            if (result.authorizationRequired && result.authorizationUrl) {
+                const authMessage: Message = {
+                    id: generateMessageId('auth-'),
+                    role: MessageRole.MODEL,
+                    text: result.response,
+                    authorizationRequired: true,
+                    authorizationUrl: result.authorizationUrl,
+                    waitingForAuth: (result as any).waitingForAuth || false
+                };
+                setMessages(prev => [...prev, authMessage]);
+                return;
+            }
+
+            const initialMessage: Message = {
+                id: generateMessageId('initial-'),
+                role: MessageRole.MODEL,
+                text: result.response
+            };
+            setMessages(prev => [...prev, initialMessage]);
+
+        } catch (error) {
+            console.error("Failed to get initial response from backend:", error);
+            const errorMessage = createErrorMessage("Sorry, I'm having trouble starting our conversation. Please try refreshing the page.");
+            setMessages(prev => [...prev, errorMessage]);
+        }
+    }, [sessionId, generateMessageId, createErrorMessage]);
 
     const handleSendMessage = useCallback(async (userMessage: string) => {
         if (connectionStatus !== 'connected') {

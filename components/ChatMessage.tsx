@@ -88,7 +88,7 @@ const ChatMessage: React.FC<ChatMessageProps> = memo(({ message }) => {
                              🔐 Authentication Required
                          </p>
                          <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-3">
-                             Please complete the authorization to continue our conversation.
+                             Once you're authenticated, I'll be ready to assist you with reservations, orders, and menu questions!
                          </p>
                          <a
                              href={message.authorizationUrl}
