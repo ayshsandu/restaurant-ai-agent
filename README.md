@@ -86,7 +86,8 @@ Content-Type: application/json
 npm run dev      # Start development server with hot reload
 npm run build    # Build for production
 npm run start    # Start production server
-npm run lint     # Run ESLint
+npm run lint     # Run ESLint code quality checks
+npm run type-check # Run TypeScript type checking
 ```
 
 ### Frontend Scripts
@@ -94,6 +95,26 @@ npm run lint     # Run ESLint
 npm run dev      # Start development server
 npm run build    # Build for production
 npm run preview  # Preview production build
+```
+
+## 🧹 Code Quality
+
+This project maintains high code quality standards:
+
+- **ESLint**: Configured for both frontend and backend with TypeScript support
+- **TypeScript**: Strict type checking enabled
+- **Code Linting**: Automated code quality checks
+- **Security**: No known vulnerabilities (regular audit checks)
+- **Performance**: Optimized React components with memoization
+
+### Running Code Quality Checks
+
+```bash
+# Backend linting
+cd server
+npm run lint
+
+# Frontend is handled by Vite's built-in ESLint integration
 ```
 
 ## 🐛 Troubleshooting

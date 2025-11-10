@@ -1,8 +1,9 @@
-import { GoogleGenAI, Chat, FunctionCall, Part, Type, mcpToTool } from '@google/genai';
+import { GoogleGenAI, Chat, mcpToTool } from '@google/genai';
 // import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { CustomClient } from './customClient.js';
 import { AuthorizationCodeOAuthProvider } from './simpleOAuthProvider.js';
+import { logger } from '../utils/logger.js';
 
 export interface ToolCallInfo {
   name: string;
@@ -50,6 +51,7 @@ export class GeminiService {
   };
   private chatSessions = new Map<string, ChatSessionData>();
   private readonly SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
+  private cleanupInterval?: NodeJS.Timeout;
 
   constructor(apiKey: string, mcpServiceUrl: string, oauthProvider?: AuthorizationCodeOAuthProvider) {
     if (!apiKey) {
@@ -69,22 +71,52 @@ export class GeminiService {
       scope: process.env.MCP_OAUTH_SCOPE || 'mcp:tools'
     };
 
-    // Clean up expired sessions periodically
-    setInterval(() => {
-      const now = Date.now();
-      for (const [sessionId, data] of this.chatSessions.entries()) {
-        if (now - data.lastActivity > this.SESSION_TIMEOUT) {
-          this.chatSessions.delete(sessionId);
-          console.log(`Cleaned up expired session: ${sessionId}`);
-        }
+    // Start cleanup interval (less frequent, more efficient)
+    this.startCleanupInterval();
+  }
+
+  private startCleanupInterval(): void {
+    // Clean up expired sessions every 30 minutes instead of every hour
+    this.cleanupInterval = setInterval(() => {
+      this.performSessionCleanup();
+    }, 30 * 60 * 1000);
+  }
+
+  private performSessionCleanup(): void {
+    const now = Date.now();
+    const expiredSessions: string[] = [];
+
+    // Find expired sessions
+    for (const [sessionId, data] of this.chatSessions.entries()) {
+      if (now - data.lastActivity > this.SESSION_TIMEOUT) {
+        expiredSessions.push(sessionId);
       }
-    }, 60 * 60 * 1000); // Clean every hour
+    }
+
+    // Remove expired sessions
+    for (const sessionId of expiredSessions) {
+      this.chatSessions.delete(sessionId);
+      logger.debug(`Cleaned up expired session: ${sessionId}`);
+    }
+
+    if (expiredSessions.length > 0) {
+      logger.debug(`Session cleanup completed. Removed ${expiredSessions.length} expired sessions.`);
+    }
+  }
+
+  // Clean up resources when service is destroyed
+  public destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = undefined;
+    }
+    this.chatSessions.clear();
   }
 
   private async createMCPClient(client: CustomClient, oauthProvider?: AuthorizationCodeOAuthProvider): Promise<CustomClient | undefined> {
     try {
       const baseUrl = new URL(this.mcpServiceUrl);
-      console.log("MCP Service URL:", baseUrl.toString());
+      logger.debug("MCP Service URL:", baseUrl.toString());
 
       // Create transport with OAuth provider if available
       const transport = new StreamableHTTPClientTransport(
@@ -94,11 +126,10 @@ export class GeminiService {
         }
       );
 
-      console.log("Connecting MCP client with transport options:", {
+      logger.debug("Connecting MCP client with transport options:", {
         authProvider: (oauthProvider || this.oauthProvider) ? 'Provided' : 'None'
       });
       await client.connect(transport);
-      console.log('Created new MCP client connection for session');
 
       // Set OAuth tokens on client if available
       const activeProvider = oauthProvider || this.oauthProvider;
@@ -108,7 +139,7 @@ export class GeminiService {
 
       return client;
     } catch (error) {
-      console.error('Failed to create MCP client connection:', error);
+      logger.error('Failed to create MCP client connection:', error);
       return undefined;
     }
   }
@@ -119,7 +150,7 @@ export class GeminiService {
       return undefined;
     }
 
-    console.log(`Creating OAuth provider for session: ${sessionId}`);
+    logger.debug(`Creating OAuth provider for session: ${sessionId}`);
     return new AuthorizationCodeOAuthProvider(
       this.oauthConfig.redirectUrl,
       {
@@ -143,13 +174,13 @@ export class GeminiService {
 
     // First check if OAuth is required for this session
     if (oauthProvider) {
-      console.log('OAuth configured for new session - checking OAuth requirements');
+      logger.debug('OAuth configured for new session - checking OAuth requirements');
 
       try {
         const oauthCheck = await this.checkOAuthRequirement(oauthProvider);
 
         if (oauthCheck.required && oauthCheck.authorizationUrl) {
-          console.log('OAuth required - returning authorization information');
+          logger.debug('OAuth required - returning authorization information');
 
           // Create client for this session
           const client = new CustomClient({
@@ -173,9 +204,9 @@ export class GeminiService {
           };
         }
 
-        console.log('OAuth not required or tokens available');
+        logger.debug('OAuth not required or tokens available');
       } catch (error) {
-        console.error('Error checking OAuth requirements:', error);
+        logger.error('Error checking OAuth requirements:', error);
         // Continue with normal flow if OAuth check fails
       }
     }
@@ -195,8 +226,7 @@ export class GeminiService {
       },
     });
 
-    // console.log('New chat session created:', chatSession);
-    console.log('New chat session created:', chatSession);
+    logger.debug('New chat session created:', chatSession);
 
     // Store the session data
     this.chatSessions.set(sessionId, {
@@ -206,7 +236,7 @@ export class GeminiService {
       lastActivity: Date.now()
     });
 
-    console.log(`Chat session created for user: ${sessionId}`);
+    logger.debug(`Chat session created for user: ${sessionId}`);
 
     return {
       type: 'chat',
@@ -244,7 +274,7 @@ export class GeminiService {
 
       // Try to connect - this should trigger OAuth if needed
       //log  
-      console.log("Attempting OAuth check connection with transport options:", { authProvider: 'Provided' });    
+      logger.debug("Attempting OAuth check connection with transport options:", { authProvider: 'Provided' });    
 
       await client.connect(transport);
 
@@ -253,11 +283,11 @@ export class GeminiService {
       return { required: false };
 
     } catch (error) {
-      console.log('OAuth check connection failed, checking for authorization URL');
-      console.error('OAuth check connection error:', error);
+      logger.debug('OAuth check connection failed, checking for authorization URL');
+      logger.error('OAuth check connection error:', error);
       // Check if an authorization URL was generated
       const authUrl = oauthProvider.getPendingAuthorizationUrl();
-      console.log("Authorization URL from OAuth provider:", authUrl?.toString());
+      logger.debug("Authorization URL from OAuth provider:", authUrl?.toString());
       if (authUrl) {
         return {
           required: true,
@@ -314,7 +344,7 @@ export class GeminiService {
          oauthProvider = this.getOAuthProvider(state);
         }
     if (error) {
-      console.error('OAuth authorization error:', error, errorDescription);
+      logger.error('OAuth authorization error:', error, errorDescription);
       // Try to clear pending URL for the session if state contains session ID
       if (state) {
         oauthProvider?.clearPendingAuthorizationUrl();
@@ -346,7 +376,7 @@ export class GeminiService {
 
     // The MCP transport will handle the OAuth callback internally
     // when it receives the authorization code. We just need to acknowledge receipt.
-    console.log(`OAuth callback received for session ${state} - transport will complete authorization`);
+    logger.debug(`OAuth callback received for session ${state} - transport will complete authorization`);
 
     // Clear the pending authorization URL since callback was received
 
@@ -356,7 +386,7 @@ export class GeminiService {
       const transport = this.getTransportInstance(state);
 
       //log transport and code
-        console.log('Finishing OAuth authorization with transport and code:', {
+        logger.debug('Finishing OAuth authorization with transport and code:', {
             transportExists: !!transport,
             codeExists: !!code
         });
@@ -364,7 +394,7 @@ export class GeminiService {
           await transport.finishAuth(code);
           if (oauthProvider) {
             //log tokens
-            console.log('OAuth tokens:', oauthProvider.tokens());
+            logger.debug('OAuth tokens:', oauthProvider.tokens());
             oauthProvider.clearPendingAuthorizationUrl();
           }
           
@@ -411,7 +441,7 @@ export class GeminiService {
       lastActivity: Date.now()
     });
 
-    console.log(`Chat session updated for user: ${state} after OAuth callback`);
+    logger.debug(`Chat session updated for user: ${state} after OAuth callback`);
 
     return {
       success: true,
@@ -426,16 +456,16 @@ export class GeminiService {
       throw new Error("Chat session not found.");
     }
 
-    console.log("Processing message:", message);
+    logger.debug("Processing message:", message);
 
     try {
-      let response = await sessionData.session.sendMessage({ message: message });
-      console.log("Final AI response:", response.text);
+      const response = await sessionData.session.sendMessage({ message: message });
+      logger.debug("Final AI response:", response.text);
       return {
         text: response.text || '',
       };
     } catch (error) {
-      console.error("Error in chat processing:", error);
+      logger.error("Error in chat processing:", error);
 
       // Check if this is an OAuth-related error
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

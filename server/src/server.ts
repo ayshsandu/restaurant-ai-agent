@@ -2,12 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 import dotenv from 'dotenv';
 import { GeminiService } from './services/geminiService.js';
-import { AuthorizationCodeOAuthProvider } from './services/simpleOAuthProvider.js';
-// import {AuthorizationCodeOAuthProvider} from './services/oauthProvider.js';
 
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from './utils/logger.js';
 
 /**
  * Restaurant AI Assistant Backend Server
@@ -22,20 +22,10 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(express.json());
+// Trust proxy for rate limiting behind reverse proxies
+app.set('trust proxy', 1);
 
-// Enable CORS with proper configuration
-app.use(
-    cors({
-        origin: process.env.NODE_ENV === 'production'
-            ? process.env.ALLOWED_ORIGINS?.split(',') || false
-            : true, // Allow all origins for development
-        credentials: true,
-        exposedHeaders: ['Mcp-Session-Id'],
-    })
-);
-
-// Security middleware
+// Security middleware (apply early)
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -47,23 +37,63 @@ app.use(helmet({
     },
 }));
 
-// Rate limiting with different tiers
-const createRateLimit = (windowMs: number, max: number, message: string) => {
+// Compression middleware (apply early for all responses)
+app.use(compression());
+
+// CORS configuration
+app.use(
+    cors({
+        origin: process.env.NODE_ENV === 'production'
+            ? process.env.ALLOWED_ORIGINS?.split(',') || false
+            : true, // Allow all origins for development
+        credentials: true,
+        exposedHeaders: ['Mcp-Session-Id'],
+    })
+);
+
+// Body parsing with size limits (apply before rate limiting)
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Rate limiting with different tiers and better configuration
+const createRateLimit = (windowMs: number, max: number, message: string, skipSuccessfulRequests = false) => {
     return rateLimit({
         windowMs,
         max,
         message: { error: message },
         standardHeaders: true,
         legacyHeaders: false,
+        skipSuccessfulRequests, // Don't count successful requests toward limit
+        skip: (req) => req.method === 'OPTIONS', // Skip preflight requests
     });
 };
 
-app.use('/api/chat', createRateLimit(15 * 60 * 1000, 50, 'Too many chat requests, please slow down'));
-app.use('/api/', createRateLimit(15 * 60 * 1000, 100, 'Too many API requests from this IP'));
+// Stricter rate limiting for chat endpoint (most resource intensive)
+app.use('/api/chat', createRateLimit(15 * 60 * 1000, 30, 'Too many chat requests, please slow down', true));
 
-// Body parsing with size limits
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// General API rate limiting
+app.use('/api/', createRateLimit(15 * 60 * 1000, 100, 'Too many API requests from this IP', false));
+
+// Request timeout middleware (30 seconds for most requests, 60 for chat)
+const createTimeout = (timeoutMs: number) => {
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        const timeout = setTimeout(() => {
+            if (!res.headersSent) {
+                res.status(408).json({
+                    success: false,
+                    error: 'Request timeout'
+                });
+            }
+        }, timeoutMs);
+
+        res.on('finish', () => clearTimeout(timeout));
+        next();
+    };
+};
+
+// Apply different timeouts for different endpoints
+app.use('/api/chat', createTimeout(60000)); // 60 seconds for chat requests
+app.use('/api/', createTimeout(30000)); // 30 seconds for other API requests
 
 // Initialize Gemini service
 let geminiService: GeminiService;
@@ -82,14 +112,24 @@ try {
 
   // Initialize Gemini service without global OAuth provider
   geminiService = new GeminiService(apiKey, mcpServiceUrl);
-  console.log('Gemini service initialized successfully');
+  logger.info('Gemini service initialized successfully');
 } catch (error) {
   console.error('Failed to initialize services:', error);
   process.exit(1);
 }
 
-// Health check endpoint with details
+// Health check endpoint with caching
+let healthCache: { data: any; timestamp: number } | null = null;
+const HEALTH_CACHE_DURATION = 30000; // Cache for 30 seconds
+
 app.get('/api/health', (req, res) => {
+  const now = Date.now();
+
+  // Return cached response if still valid
+  if (healthCache && (now - healthCache.timestamp) < HEALTH_CACHE_DURATION) {
+    return res.json(healthCache.data);
+  }
+
   const health = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -99,10 +139,38 @@ app.get('/api/health', (req, res) => {
     sessions: {
       active: geminiService.getSessionCount(),
       maxAge: '24 hours'
+    },
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  };
+
+  // Cache the response
+  healthCache = { data: health, timestamp: now };
+
+  res.json(health);
+});
+
+// Metrics endpoint for monitoring (development only)
+app.get('/api/metrics', (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const metrics = {
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    sessions: {
+      active: geminiService.getSessionCount()
+    },
+    environment: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch
     }
   };
 
-  res.json(health);
+  res.json(metrics);
 });
 
 // Add session info endpoint for debugging
@@ -162,7 +230,7 @@ app.get('/api/oauth/callback', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error handling OAuth callback:', error);
+    logger.error('Error handling OAuth callback:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
 
     res.status(500).json({
@@ -210,21 +278,20 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
-    // Generate or validate session ID
+    // Generate or validate session ID with better validation
     let currentSessionId = sessionId;
-    if (!currentSessionId || typeof currentSessionId !== 'string' || currentSessionId.length > 100) {
+    if (!currentSessionId || typeof currentSessionId !== 'string' || currentSessionId.length === 0 || currentSessionId.length > 100) {
       currentSessionId = uuidv4();
-      console.log('Generated new session ID:', currentSessionId);
+      logger.info('Generated new session ID:', currentSessionId);
     } else {
-      console.log('Using existing session ID:', currentSessionId);
+      // Basic sanitization - remove any potentially harmful characters
+      currentSessionId = currentSessionId.trim();
+      logger.debug('Using existing session ID:', currentSessionId);
     }
 
     // Get or create chat session
     let sessionData = geminiService.getChatSession(currentSessionId);
-    let isNewSession = false;
     if (!sessionData) {
-      isNewSession = true;
-
       // Create chat session with session-specific OAuth provider
       const chatSessionResult = await geminiService.createChatSession(currentSessionId);
 
@@ -243,10 +310,10 @@ app.post('/api/chat', async (req, res) => {
 
       // OAuth not required - session was created and stored internally
       sessionData = geminiService.getChatSession(currentSessionId);
-      console.log('Created new chat session for:', currentSessionId);
+      logger.info('Created new chat session for:', currentSessionId);
     }
 
-    console.log('Received chat request:', {
+    logger.debug('Received chat request:', {
       sessionId: currentSessionId,
       message: sanitizedMessage.substring(0, 100) + '...'
     });
@@ -265,7 +332,7 @@ app.post('/api/chat', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error processing chat request:', error);
+    logger.error('Error processing chat request:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
 
     // Don't leak sensitive information in production
@@ -280,8 +347,8 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // Global error handling middleware
-app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Unhandled error:', {
+app.use((error: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  logger.error('Unhandled error:', {
     message: error.message,
     stack: error.stack,
     url: req.url,
@@ -326,26 +393,26 @@ if (process.env.NODE_ENV === 'development') {
 
 // Start server
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Restaurant AI Backend running on port ${PORT}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`💬 Chat endpoint: http://localhost:${PORT}/api/chat`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📊 Active sessions: ${geminiService.getSessionCount()}`);
+  logger.info(`🚀 Restaurant AI Backend running on port ${PORT}`);
+  logger.info(`🔗 Health check: http://localhost:${PORT}/api/health`);
+  logger.info(`💬 Chat endpoint: http://localhost:${PORT}/api/chat`);
+  logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`📊 Active sessions: ${geminiService.getSessionCount()}`);
 });
 
 // Graceful shutdown
 const gracefulShutdown = (signal: string) => {
-  console.log(`${signal} received, shutting down gracefully...`);
+  logger.info(`${signal} received, shutting down gracefully...`);
 
   server.close(() => {
-    console.log('HTTP server closed');
+    logger.info('HTTP server closed');
     // Close any database connections here if needed
     process.exit(0);
   });
 
   // Force close after 10 seconds
   setTimeout(() => {
-    console.error('Could not close connections in time, forcefully shutting down');
+    logger.error('Could not close connections in time, forcefully shutting down');
     process.exit(1);
   }, 10000);
 };
