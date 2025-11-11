@@ -1,14 +1,101 @@
 
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 
 const Header: React.FC = memo(() => {
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+    const scrollToSection = (sectionId: string) => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth' });
+        }
+        setIsMenuOpen(false);
+    };
+
     return (
-        <header className="bg-white dark:bg-gray-800 shadow-md p-4 flex items-center justify-center sticky top-0 z-10">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-500 mr-3" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M16 13c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-2.21 1.79-4 4-4s4 1.79 4 4v8zm-6 0c0 1.1.9 2 2 2s2-.9 2-2V5c0-1.1-.9-2-2-2s-2 .9-2 2v8z"/>
-                <path d="M19 13v-2h-2v2c0 3.31-2.69 6-6 6s-6-2.69-6-6v-2H3v2c0 4.41 3.59 8 8 8v3h2v-3c4.41 0 8-3.59 8-8z"/>
-            </svg>
-            <h1 className="text-xl font-bold text-gray-800 dark:text-white">Restaurant AI Assistant</h1>
+        <header className="bg-white shadow-sm border-b border-gray-100">
+            <nav className="container mx-auto px-4 py-6">
+                <div className="flex items-center justify-between">
+                    {/* Logo */}
+                    <div className="flex items-center">
+                        <h1 className="text-2xl font-serif font-bold text-gray-900">Urban Bites</h1>
+                    </div>
+
+                    {/* Desktop Navigation */}
+                    <div className="hidden md:flex items-center space-x-8">
+                        <button
+                            onClick={() => scrollToSection('hero')}
+                            className="text-gray-700 hover:text-gray-900 transition-colors font-medium"
+                        >
+                            Home
+                        </button>
+                        <button
+                            onClick={() => scrollToSection('menu')}
+                            className="text-gray-700 hover:text-gray-900 transition-colors font-medium"
+                        >
+                            Menu
+                        </button>
+                        <button
+                            onClick={() => scrollToSection('about')}
+                            className="text-gray-700 hover:text-gray-900 transition-colors font-medium"
+                        >
+                            About
+                        </button>
+                        <button
+                            onClick={() => scrollToSection('contact')}
+                            className="text-gray-700 hover:text-gray-900 transition-colors font-medium"
+                        >
+                            Contact
+                        </button>
+                    </div>
+
+                    {/* Mobile Menu Button */}
+                    <button
+                        onClick={() => setIsMenuOpen(!isMenuOpen)}
+                        className="md:hidden text-gray-700 hover:text-gray-900 transition-colors"
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            {isMenuOpen ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                            )}
+                        </svg>
+                    </button>
+                </div>
+
+                {/* Mobile Navigation */}
+                {isMenuOpen && (
+                    <div className="md:hidden mt-4 pb-4 border-t border-gray-200">
+                        <div className="flex flex-col space-y-4 pt-4">
+                            <button
+                                onClick={() => scrollToSection('hero')}
+                                className="text-left text-gray-700 hover:text-gray-900 transition-colors font-medium"
+                            >
+                                Home
+                            </button>
+                            <button
+                                onClick={() => scrollToSection('menu')}
+                                className="text-left text-gray-700 hover:text-gray-900 transition-colors font-medium"
+                            >
+                                Menu
+                            </button>
+                            <button
+                                onClick={() => scrollToSection('about')}
+                                className="text-left text-gray-700 hover:text-gray-900 transition-colors font-medium"
+                            >
+                                About
+                            </button>
+                            <button
+                                onClick={() => scrollToSection('contact')}
+                                className="text-left text-gray-700 hover:text-gray-900 transition-colors font-medium"
+                            >
+                                Contact
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </nav>
         </header>
     );
 });

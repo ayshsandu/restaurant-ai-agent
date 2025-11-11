@@ -27,20 +27,20 @@ const ChatInput: React.FC<ChatInputProps> = memo(({ onSendMessage, isLoading, di
     const canSubmit = input.trim() && !isInputDisabled;
 
     return (
-        <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 sticky bottom-0">
+        <div className="p-4 bg-amber-50 border-t border-gray-300">
             <form onSubmit={handleSubmit} className="flex items-center gap-3">
                 <input
                     type="text"
                     value={input}
                     onChange={handleInputChange}
                     placeholder={disabled ? "Backend server not connected..." : "Ask about the menu or place an order..."}
-                    className="flex-grow p-3 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 dark:bg-gray-700 dark:text-white disabled:opacity-50 transition-colors"
+                    className="flex-grow p-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-800 bg-white text-gray-900 disabled:opacity-50 transition-colors"
                     disabled={isInputDisabled}
                     maxLength={1000}
                 />
                 <button
                     type="submit"
-                    className="bg-indigo-500 text-white p-3 rounded-full hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-indigo-300 disabled:cursor-not-allowed transition-colors"
+                    className="bg-green-800 text-white p-3 rounded-full hover:bg-green-900 focus:outline-none focus:ring-2 focus:ring-green-800 focus:ring-offset-2 disabled:bg-green-400 disabled:cursor-not-allowed transition-colors"
                     disabled={!canSubmit}
                     aria-label="Send message"
                 >

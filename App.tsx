@@ -1,16 +1,16 @@
 
-import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import Header from './components/Header';
-import ChatMessage from './components/ChatMessage';
-import ChatInput from './components/ChatInput';
+import Hero from './components/Hero';
+import About from './components/About';
+import MenuPreview from './components/MenuPreview';
+import ReviewsAndLocation from './components/ReviewsAndLocation';
+import Contact from './components/Contact';
+import Footer from './components/Footer';
+import Chatbot from './components/Chatbot';
+import ChatButton from './components/ChatButton';
 import { Message, MessageRole } from './types';
 import { apiService } from './services/apiService';
-
-const WELCOME_MESSAGE: Message = {
-    id: 'welcome',
-    role: MessageRole.MODEL,
-    text: "Welcome to our restaurant!"
-};
 
 const CONNECTION_ERROR_MESSAGE: Message = {
     id: 'connection-error',
@@ -19,40 +19,13 @@ const CONNECTION_ERROR_MESSAGE: Message = {
 };
 
 const App: React.FC = memo(() => {
-    const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isChatOpen, setIsChatOpen] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
-    const [sessionId, setSessionId] = useState<string | null>(null);
-    const chatContainerRef = useRef<HTMLDivElement>(null);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const initializedRef = useRef(false);
-
-    // Generate consistent message IDs
-    const generateMessageId = useCallback((prefix: string = '') => {
-        return `${prefix}${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    }, []);
-
-    // Scroll to bottom when messages change
-    const scrollToBottom = useCallback(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, []);
+    const [hasNewMessage, setHasNewMessage] = useState(false);
 
     useEffect(() => {
-        scrollToBottom();
-    }, [messages, scrollToBottom]);
-
-    useEffect(() => {
-        if (initializedRef.current) return;
-        initializedRef.current = true;
-
         // Check backend connection on app start
         checkBackendConnection();
-
-        // Load or generate session ID
-        const storedSessionId = localStorage.getItem('chatSessionId');
-        if (storedSessionId) {
-            setSessionId(storedSessionId);
-        }
     }, []);
 
     const checkBackendConnection = useCallback(async () => {
@@ -60,172 +33,57 @@ const App: React.FC = memo(() => {
             await apiService.healthCheck();
             setConnectionStatus('connected');
             console.log('Backend connection established');
-            // Send initial message after connection is established
-            await sendInitialMessage();
         } catch (error) {
             setConnectionStatus('disconnected');
             console.error('Backend connection failed:', error);
-
-            // Add a system message about connection issues
-            setMessages([WELCOME_MESSAGE, CONNECTION_ERROR_MESSAGE]);
         }
     }, []);
 
-    const createErrorMessage = useCallback((text: string): Message => ({
-        id: generateMessageId('error-'),
-        role: MessageRole.MODEL,
-        text
-    }), [generateMessageId]);
+    const handleOpenChat = useCallback(() => {
+        setIsChatOpen(true);
+        setHasNewMessage(false);
+    }, []);
 
-    const sendInitialMessage = useCallback(async () => {
-        try {
-            const result = await apiService.sendChatMessage("Hello", sessionId || undefined);
-
-            // Update session ID if it was newly generated
-            if (result.sessionId && result.sessionId !== sessionId) {
-                setSessionId(result.sessionId);
-                localStorage.setItem('chatSessionId', result.sessionId);
-            }
-
-            // Handle authorization requirement
-            if (result.authorizationRequired && result.authorizationUrl) {
-                const authMessage: Message = {
-                    id: generateMessageId('auth-'),
-                    role: MessageRole.MODEL,
-                    text: result.response,
-                    authorizationRequired: true,
-                    authorizationUrl: result.authorizationUrl,
-                    waitingForAuth: (result as any).waitingForAuth || false
-                };
-                setMessages(prev => [...prev, authMessage]);
-                return;
-            }
-
-            const initialMessage: Message = {
-                id: generateMessageId('initial-'),
-                role: MessageRole.MODEL,
-                text: result.response
-            };
-            setMessages(prev => [...prev, initialMessage]);
-
-        } catch (error) {
-            console.error("Failed to get initial response from backend:", error);
-            const errorMessage = createErrorMessage("Sorry, I'm having trouble starting our conversation. Please try refreshing the page.");
-            setMessages(prev => [...prev, errorMessage]);
-        }
-    }, [sessionId, generateMessageId, createErrorMessage]);
-
-    const handleSendMessage = useCallback(async (userMessage: string) => {
-        if (connectionStatus !== 'connected') {
-            const errorMessage = createErrorMessage(
-                "Sorry, I can't process your request right now. The backend server is not available."
-            );
-            setMessages(prev => [...prev, errorMessage]);
-            return;
-        }
-
-        setIsLoading(true);
-        const newUserMessage: Message = {
-            id: generateMessageId('user-'),
-            role: MessageRole.USER,
-            text: userMessage
-        };
-
-        setMessages(prev => [...prev, newUserMessage]);
-
-        try {
-            const result = await apiService.sendChatMessage(userMessage, sessionId || undefined);
-
-            // Update session ID if it was newly generated
-            if (result.sessionId && result.sessionId !== sessionId) {
-                setSessionId(result.sessionId);
-                localStorage.setItem('chatSessionId', result.sessionId);
-            }
-
-            // Handle authorization requirement
-            if (result.authorizationRequired && result.authorizationUrl) {
-                const authMessage: Message = {
-                    id: generateMessageId('auth-'),
-                    role: MessageRole.MODEL,
-                    text: result.response,
-                    authorizationRequired: true,
-                    authorizationUrl: result.authorizationUrl,
-                    waitingForAuth: (result as any).waitingForAuth || false
-                };
-                setMessages(prev => [...prev, authMessage]);
-                return;
-            }
-
-            const newBotMessage: Message = {
-                id: generateMessageId('bot-'),
-                role: MessageRole.MODEL,
-                text: result.response
-            };
-            setMessages(prev => [...prev, newBotMessage]);
-
-        } catch (error) {
-            console.error("Failed to get response from backend:", error);
-
-            let errorText = "Sorry, I'm having trouble processing your request. Please try again later.";
-            if (error instanceof Error) {
-                if (error.message.includes('connect to the server')) {
-                    errorText = "Unable to connect to the server. Please make sure the backend is running.";
-                    setConnectionStatus('disconnected');
-                } else if (error.message.includes('too long')) {
-                    errorText = "Your message is too long. Please keep it under 1000 characters.";
-                }
-            }
-
-            const errorMessage = createErrorMessage(errorText);
-            setMessages(prev => [...prev, errorMessage]);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [connectionStatus, sessionId, createErrorMessage]);
+    const handleCloseChat = useCallback(() => {
+        setIsChatOpen(false);
+    }, []);
 
     return (
-        <div className="flex flex-col h-screen font-sans bg-gray-100 dark:bg-gray-900">
+        <div className="min-h-screen bg-amber-50">
+            {/* Navigation Header */}
             <Header />
+
+            {/* Restaurant Website */}
+            <Hero />
+            <About />
+            <MenuPreview />
+            <ReviewsAndLocation />
+            <Contact />
+            <Footer />
+
+            {/* Chat Button */}
+            <ChatButton
+                onClick={handleOpenChat}
+                hasNewMessage={hasNewMessage}
+            />
+
+            {/* Chatbot Modal */}
+            <Chatbot
+                isOpen={isChatOpen}
+                onClose={handleCloseChat}
+            />
+
+            {/* Connection Status Indicator */}
             {connectionStatus === 'disconnected' && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 mx-4 rounded-lg">
-                    <div className="flex items-center">
-                        <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <div className="fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded-lg shadow-md z-30">
+                    <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                         </svg>
-                        <span className="font-medium">Backend Disconnected</span>
+                        <span className="text-sm font-medium">Backend Disconnected</span>
                     </div>
-                    <p className="text-sm mt-1">Please start the backend server and refresh the page.</p>
                 </div>
             )}
-            <main ref={chatContainerRef} className="flex-grow overflow-y-auto p-4">
-                <div className="max-w-4xl mx-auto">
-                    {messages.map((msg) => (
-                        <ChatMessage key={msg.id} message={msg} />
-                    ))}
-                    {isLoading && (
-                        <div className="flex items-start gap-3 my-4">
-                           <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold flex-shrink-0">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                                </svg>
-                            </div>
-                            <div className="p-3 rounded-lg bg-white dark:bg-gray-700 shadow-sm rounded-bl-none">
-                                <div className="flex items-center space-x-2">
-                                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse delay-75"></div>
-                                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse delay-150"></div>
-                                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse delay-300"></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                </div>
-            </main>
-            <ChatInput
-                onSendMessage={handleSendMessage}
-                isLoading={isLoading}
-                disabled={connectionStatus !== 'connected'}
-            />
         </div>
     );
 });
