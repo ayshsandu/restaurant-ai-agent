@@ -15,15 +15,15 @@ const Hero: React.FC = memo(() => {
                     </div>
                     <div className="aspect-square bg-gray-200 rounded-lg overflow-hidden">
                         <img
-                            src="https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=400&h=400&fit=crop"
-                            alt="Pasta"
+                            src="https://images.unsplash.com/photo-1607532941433-304659e8198a?w=400&h=400&fit=crop"
+                            alt="Salad"
                             className="w-full h-full object-cover"
                         />
                     </div>
                     <div className="aspect-square bg-gray-200 rounded-lg overflow-hidden">
                         <img
-                            src="https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400&h=400&fit=crop"
-                            alt="Salad"
+                            src="https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?w=400&h=400&fit=crop"
+                            alt="Pasta"
                             className="w-full h-full object-cover"
                         />
                     </div>
