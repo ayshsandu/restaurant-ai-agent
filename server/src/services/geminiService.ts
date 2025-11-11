@@ -4,6 +4,7 @@ import { CustomClient } from './customClient.js';
 import { AuthorizationCodeOAuthProvider } from './simpleOAuthProvider.js';
 import { AgentOAuthProvider } from './agentOAuthProvider.js';
 import { logger } from '../utils/logger.js';
+import { SYSTEM_INSTRUCTION } from './systemInstructions.js';
 
 // ============================================================================
 // CONSTANTS
@@ -13,7 +14,6 @@ const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
 const CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const WELCOME_MESSAGE = '👋 Hi there! Before we continue, please take a moment to authenticate.';
 const AUTHENTICATION_PROMPT = 'Please authenticate with our restaurant system to continue.';
-const SYSTEM_INSTRUCTION = 'You are a friendly and efficient restaurant assistant. Start every conversation with a warm welcome and brief introduction of your capabilities as a restaurant AI assistant. Your goal is to help users browse the menu and place orders. Be polite and clear. When presenting menu items, include their ID, name, description, and price. When an order is placed, confirm the order details back to the user.';
 
 export interface ToolCallInfo {
     name: string;
