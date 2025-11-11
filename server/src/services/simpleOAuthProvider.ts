@@ -1,5 +1,7 @@
 import { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
-import { OAuthClientMetadata, OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
+import { OAuthClientMetadata, OAuthClientInformationMixed, OAuthTokens, AuthorizationServerMetadata, OAuthTokensSchema } from '@modelcontextprotocol/sdk/shared/auth.js';
+import { AgentOAuthProvider } from './agentOAuthProvider.js';
+import { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 /**
  * Simple OAuth Provider implementing authorization code grant flow
@@ -14,6 +16,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
   private _codeVerifier?: string;
   private _pendingAuthorizationUrl?: URL;
   private _sessionId?: string;
+  private _agentProvider?: AgentOAuthProvider;
 
   constructor(
     redirectUrl: string | URL,
@@ -21,7 +24,8 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
     clientId?: string,
     clientSecret?: string,
     tokens?: OAuthTokens,
-    sessionId?: string
+    sessionId?: string,
+    agentProvider?: AgentOAuthProvider
   ) {
     this._redirectUrl = redirectUrl;
     this._clientMetadata = clientMetadata;
@@ -29,6 +33,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
     this._clientSecret = clientSecret;
     this._tokens = tokens;
     this._sessionId = sessionId;
+    this._agentProvider = agentProvider;
   }
 
   get redirectUrl(): string | URL {
@@ -77,10 +82,40 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
   }
 
   /**
+   * Get agent identity tokens from the agent provider
+   */
+  agentIdentityTokens(): OAuthTokens | undefined {
+    return this._agentProvider?.getAgentTokens();
+  }
+
+  /**
+   * Check if this provider has an agent provider
+   */
+  hasAgentProvider(): boolean {
+    return !!this._agentProvider;
+  }
+
+  /**
+   * Get the agent ID from the agent provider
+   */
+  getAgentID(): string | undefined {
+    return this._agentProvider?.getAgentID();
+  }
+
+  /**
    * Store the authorization URL for later retrieval
    */
   redirectToAuthorization(authorizationUrl: URL): void {
     console.log('Authorization URL:', authorizationUrl.toString());
+    
+    // Add agentID as a parameter if agent provider exists
+    if (this._agentProvider) {
+      const agentID = this._agentProvider.getAgentID();
+      if (agentID) {
+        authorizationUrl.searchParams.set('requested_actor', agentID);
+      }
+    }
+    
     this._pendingAuthorizationUrl = authorizationUrl;
   }
 
@@ -146,5 +181,143 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
       throw new Error('Code verifier not available. Authorization flow not initiated.');
     }
     return this._codeVerifier;
+  }
+
+  /**
+   * Override exchangeAuthorization from OAuthClientProvider to add logging
+   */
+  exchangeAuthorization(authorizationServerUrl: string | URL, params: {
+    metadata?: AuthorizationServerMetadata;
+    clientInformation: OAuthClientInformationMixed;
+    authorizationCode: string;
+    codeVerifier: string;
+    redirectUri: string | URL;
+    resource?: URL;
+    addClientAuthentication?: OAuthClientProvider['addClientAuthentication'];
+    fetchFn?: FetchLike;
+  }): Promise<OAuthTokens> {
+    console.log('OAuthClientProvider: Starting authorization code exchange', {
+      authorizationServerUrl: authorizationServerUrl.toString(),
+      clientId: params.clientInformation.client_id,
+      hasCodeVerifier: !!params.codeVerifier,
+      redirectUri: params.redirectUri.toString(),
+      resource: params.resource?.toString(),
+      sessionId: this._sessionId,
+      hasAgentProvider: !!this._agentProvider
+    });
+
+    return this.exchangeCodeForTokens(
+      params.authorizationCode,
+      authorizationServerUrl.toString(),
+      this._agentProvider?.getAgentTokens()?.access_token
+    );
+  }
+
+  /**
+   * Exchange authorization code for tokens with optional agent token
+   */
+  async exchangeCodeForTokens(tokenEndpoint: string | undefined,code: string, agentToken?: string): Promise<OAuthTokens> {
+    const body: any = {
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: typeof this._redirectUrl === 'string' ? this._redirectUrl : this._redirectUrl.toString(),
+      client_id: this._clientId,
+      code_verifier: this._codeVerifier,
+    };
+
+    // Include client_secret if available (for confidential clients)
+    if (this._clientSecret) {
+      body.client_secret = this._clientSecret;
+    }
+
+    // Include agent identity token in the request if provided or available from agent provider
+    const tokenToUse = agentToken || this._agentProvider?.getAgentTokens()?.access_token;
+    if (tokenToUse) {
+      body.actor_token = tokenToUse;
+    }
+
+    console.log('Exchanging code for tokens with body:', body);
+
+    const response = await fetch(tokenEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: new URLSearchParams(body).toString(),
+    });
+
+    //log response status and the content 
+    console.log('Token exchange response status:', response);
+    if (!response.ok) {
+      throw new Error(`Token exchange failed: ${response.status} ${response.statusText}`);
+    }
+
+    // Save tokens
+    const tokens = OAuthTokensSchema.parse(await response.json());
+    this.saveTokens(tokens);
+
+    return tokens;
+  }
+
+  /**
+   * Create an agent identity OAuth provider instance
+   */
+  static createAgentIdentityProvider(
+    redirectUrl: string | URL,
+    clientMetadata: OAuthClientMetadata,
+    clientId?: string,
+    clientSecret?: string,
+    agentIdentityTokens?: OAuthTokens,
+    agentID?: string,
+    agentPassword?: string
+  ): AuthorizationCodeOAuthProvider {
+    // Create the agent provider
+    const agentProvider = new AgentOAuthProvider(
+      redirectUrl,
+      clientMetadata,
+      clientId,
+      clientSecret,
+      undefined, // tokenEndpoint
+      agentID,
+      agentPassword
+    );
+
+    // If agent tokens are provided, save them
+    if (agentIdentityTokens) {
+      agentProvider.saveTokens(agentIdentityTokens);
+    }
+
+    return new AuthorizationCodeOAuthProvider(
+      redirectUrl,
+      clientMetadata,
+      clientId,
+      clientSecret,
+      undefined, // user tokens
+      'agent_identity', // session ID
+      agentProvider
+    );
+  }
+
+  /**
+   * Create a user OAuth provider instance
+   */
+  static createUserProvider(
+    redirectUrl: string | URL,
+    clientMetadata: OAuthClientMetadata,
+    sessionId: string,
+    clientId?: string,
+    clientSecret?: string,
+    agentProvider?: AgentOAuthProvider
+  ): AuthorizationCodeOAuthProvider {
+    return new AuthorizationCodeOAuthProvider(
+      redirectUrl,
+      clientMetadata,
+      clientId,
+      clientSecret,
+      undefined, // user tokens
+      sessionId,
+      agentProvider
+    );
   }
 }

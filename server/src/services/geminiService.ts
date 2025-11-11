@@ -4,6 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { CustomClient } from './customClient.js';
 import { AuthorizationCodeOAuthProvider } from './simpleOAuthProvider.js';
 import { logger } from '../utils/logger.js';
+import { AgentOAuthProvider } from './agentOAuthProvider.js';
 
 export interface ToolCallInfo {
     name: string;
@@ -42,6 +43,7 @@ export class GeminiService {
     private ai: GoogleGenAI;
     private mcpServiceUrl: string;
     private oauthProvider?: AuthorizationCodeOAuthProvider;
+    private agentAuthProvider?: AgentOAuthProvider;
     private oauthConfig: {
         clientId?: string;
         clientSecret?: string;
@@ -73,6 +75,39 @@ export class GeminiService {
 
         // Start cleanup interval (less frequent, more efficient)
         this.startCleanupInterval();
+
+        // Initialize agent auth provider if configured
+        this.initializeAgentAuthProvider();
+    }
+
+    private async initializeAgentAuthProvider(): Promise<void> {
+        if (!this.oauthConfig.clientId) {
+            return;
+        }
+
+        // Create a agentAuthProvider
+        logger.debug("Creating AgentAuthProvider with ID from env");
+        const agentID = process.env.AGENT_ID;
+        const agentPassword = process.env.AGENT_PASSWORD;
+        const tokenEndpoint = this.oauthConfig.tokenEndpoint;
+        logger.debug("Token endpoint for AgentOAuthProvider:", tokenEndpoint);
+        this.agentAuthProvider = new AgentOAuthProvider(
+            this.oauthConfig.redirectUrl,
+            {
+                client_name: `Restaurant AI Assistant MCP Client`,
+                redirect_uris: [this.oauthConfig.redirectUrl],
+                grant_types: ['authorization_code', 'refresh_token'],
+                response_types: ['code'],
+                token_endpoint_auth_method: this.oauthConfig.clientSecret ? 'client_secret_post' : 'none',
+                scope: this.oauthConfig.scope,
+            },
+            this.oauthConfig.clientId,
+            this.oauthConfig.clientSecret,
+            tokenEndpoint,
+            agentID,
+            agentPassword
+        );
+        await this.agentAuthProvider.tokens();
     }
 
     private startCleanupInterval(): void {
@@ -145,7 +180,7 @@ export class GeminiService {
     }
 
     // Function to create OAuth provider for a session
-    private createOAuthProviderForSession(sessionId: string): AuthorizationCodeOAuthProvider | undefined {
+    private async createOAuthProviderForSession(sessionId: string): Promise<AuthorizationCodeOAuthProvider | undefined> {
         if (!this.oauthConfig.clientId) {
             return undefined;
         }
@@ -164,13 +199,14 @@ export class GeminiService {
             this.oauthConfig.clientId,
             this.oauthConfig.clientSecret,
             undefined, // tokens
-            sessionId // session ID for state parameter
+            sessionId, // session ID for state parameter
+            this.agentAuthProvider // agent provider
         );
     }
 
     public async createChatSession(sessionId: string): Promise<CreateChatSessionResult> {
         // Create OAuth provider for this session if OAuth is configured
-        const oauthProvider = this.createOAuthProviderForSession(sessionId);
+        const oauthProvider = await this.createOAuthProviderForSession(sessionId);
 
         // First check if OAuth is required for this session
         if (oauthProvider) {
@@ -388,10 +424,12 @@ export class GeminiService {
         //log transport and code
         logger.debug('Finishing OAuth authorization with transport and code:', {
             transportExists: !!transport,
-            codeExists: !!code
+            codeExists: !!code,
+            code: code
         });
         if (transport && code) {
-            await transport.finishAuth(code);
+            await oauthProvider?.exchangeCodeForTokens(this.oauthConfig.tokenEndpoint, code);
+            // await transport.finishAuth(code);
             if (oauthProvider) {
                 //log tokens
                 logger.debug('OAuth tokens:', oauthProvider.tokens());
