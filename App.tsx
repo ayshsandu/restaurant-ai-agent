@@ -58,13 +58,14 @@ const App: React.FC = memo(() => {
             <About />
             <MenuPreview />
             <ReviewsAndLocation />
-            <Contact />
+            <Contact onOpenChat={handleOpenChat} />
             <Footer />
 
             {/* Chat Button */}
             <ChatButton
                 onClick={handleOpenChat}
                 hasNewMessage={hasNewMessage}
+                isChatOpen={isChatOpen}
             />
 
             {/* Chatbot Modal */}

@@ -13,9 +13,37 @@ const UserIcon: React.FC = memo(() => (
 ));
 
 const BotIcon: React.FC = memo(() => (
-    <div className="w-8 h-8 rounded-full bg-green-800 flex items-center justify-center text-white font-bold flex-shrink-0">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+    <div className="w-8 h-8 rounded-full bg-green-800 flex items-center justify-center text-white flex-shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+            {/* Robot Head */}
+            <rect x="6" y="4" width="12" height="10" rx="2" ry="2" fill="currentColor" />
+            
+            {/* Antenna */}
+            <circle cx="9" cy="2" r="1" fill="currentColor" />
+            <circle cx="15" cy="2" r="1" fill="currentColor" />
+            <line x1="9" y1="3" x2="9" y2="4" stroke="currentColor" strokeWidth="1" />
+            <line x1="15" y1="3" x2="15" y2="4" stroke="currentColor" strokeWidth="1" />
+            
+            {/* Eyes */}
+            <circle cx="9" cy="8" r="1.5" fill="white" />
+            <circle cx="15" cy="8" r="1.5" fill="white" />
+            <circle cx="9" cy="8" r="0.8" fill="#10b981" />
+            <circle cx="15" cy="8" r="0.8" fill="#10b981" />
+            
+            {/* Mouth/Speaker */}
+            <rect x="10" y="11" width="4" height="1.5" rx="0.75" fill="white" />
+            
+            {/* Body */}
+            <rect x="7" y="14" width="10" height="6" rx="1" ry="1" fill="currentColor" />
+            
+            {/* Arms */}
+            <rect x="4" y="15" width="3" height="1.5" rx="0.75" fill="currentColor" />
+            <rect x="17" y="15" width="3" height="1.5" rx="0.75" fill="currentColor" />
+            
+            {/* Control Panel */}
+            <circle cx="10" cy="17" r="0.8" fill="white" />
+            <circle cx="14" cy="17" r="0.8" fill="white" />
+            <rect x="11" y="18.5" width="2" height="0.8" rx="0.4" fill="white" />
         </svg>
     </div>
 ));
