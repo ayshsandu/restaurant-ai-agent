@@ -294,7 +294,7 @@ app.post('/api/chat', async (req, res) => {
     if (!sessionData) {
       // Create chat session with session-specific OAuth provider
       const chatSessionResult = await geminiService.createChatSession(currentSessionId);
-
+    
       if (chatSessionResult.type === 'oauth_required') {
         // OAuth is required - return authorization information
         return res.json({

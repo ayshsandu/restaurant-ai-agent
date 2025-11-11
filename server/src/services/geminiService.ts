@@ -1,10 +1,19 @@
 import { GoogleGenAI, Chat, mcpToTool } from '@google/genai';
-// import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { CustomClient } from './customClient.js';
 import { AuthorizationCodeOAuthProvider } from './simpleOAuthProvider.js';
-import { logger } from '../utils/logger.js';
 import { AgentOAuthProvider } from './agentOAuthProvider.js';
+import { logger } from '../utils/logger.js';
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+const WELCOME_MESSAGE = '👋 Hi there! Before we continue, please take a moment to authenticate.';
+const AUTHENTICATION_PROMPT = 'Please authenticate with our restaurant system to continue.';
+const SYSTEM_INSTRUCTION = 'You are a friendly and efficient restaurant assistant. Start every conversation with a warm welcome and brief introduction of your capabilities as a restaurant AI assistant. Your goal is to help users browse the menu and place orders. Be polite and clear. When presenting menu items, include their ID, name, description, and price. When an order is placed, confirm the order details back to the user.';
 
 export interface ToolCallInfo {
     name: string;
@@ -40,43 +49,53 @@ export interface ChatSessionData {
 }
 
 export class GeminiService {
-    private ai: GoogleGenAI;
-    private mcpServiceUrl: string;
-    private oauthProvider?: AuthorizationCodeOAuthProvider;
+    private readonly ai: GoogleGenAI;
+    private readonly mcpServiceUrl: string;
+    private readonly oauthProvider?: AuthorizationCodeOAuthProvider;
     private agentAuthProvider?: AgentOAuthProvider;
-    private oauthConfig: {
+    private readonly oauthConfig: {
         clientId?: string;
         clientSecret?: string;
         redirectUrl: string;
         tokenEndpoint?: string;
         scope: string;
     };
-    private chatSessions = new Map<string, ChatSessionData>();
-    private readonly SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
+    private readonly chatSessions = new Map<string, ChatSessionData>();
+    private readonly sessionTimeout = SESSION_TIMEOUT_MS;
     private cleanupInterval?: NodeJS.Timeout;
 
     constructor(apiKey: string, mcpServiceUrl: string, oauthProvider?: AuthorizationCodeOAuthProvider) {
-        if (!apiKey) {
-            throw new Error("Google AI API key is required");
-        }
+        this.validateConstructorParams(apiKey, mcpServiceUrl);
 
         this.ai = new GoogleGenAI({ apiKey });
         this.mcpServiceUrl = mcpServiceUrl;
         this.oauthProvider = oauthProvider;
+        this.oauthConfig = this.initializeOAuthConfig();
 
-        // Initialize OAuth config from environment
-        this.oauthConfig = {
+        this.initializeService();
+    }
+
+    private validateConstructorParams(apiKey: string, mcpServiceUrl: string): void {
+        if (!apiKey) {
+            throw new Error('Google AI API key is required');
+        }
+        if (!mcpServiceUrl) {
+            throw new Error('MCP service URL is required');
+        }
+    }
+
+    private initializeOAuthConfig(): typeof this.oauthConfig {
+        return {
             clientId: process.env.MCP_OAUTH_CLIENT_ID,
             clientSecret: process.env.MCP_OAUTH_CLIENT_SECRET,
-            redirectUrl: process.env.MCP_OAUTH_REDIRECT_URL || `http://localhost:3001/api/oauth/callback`,
+            redirectUrl: process.env.MCP_OAUTH_REDIRECT_URL!,
             tokenEndpoint: process.env.MCP_OAUTH_TOKEN_ENDPOINT,
-            scope: process.env.MCP_OAUTH_SCOPE || 'mcp:tools'
+            scope: process.env.MCP_OAUTH_SCOPE!
         };
+    }
 
-        // Start cleanup interval (less frequent, more efficient)
+    private initializeService(): void {
         this.startCleanupInterval();
-
-        // Initialize agent auth provider if configured
         this.initializeAgentAuthProvider();
     }
 
@@ -111,19 +130,17 @@ export class GeminiService {
     }
 
     private startCleanupInterval(): void {
-        // Clean up expired sessions every 30 minutes instead of every hour
         this.cleanupInterval = setInterval(() => {
             this.performSessionCleanup();
-        }, 30 * 60 * 1000);
+        }, CLEANUP_INTERVAL_MS);
     }
 
     private performSessionCleanup(): void {
         const now = Date.now();
         const expiredSessions: string[] = [];
 
-        // Find expired sessions
         for (const [sessionId, data] of this.chatSessions.entries()) {
-            if (now - data.lastActivity > this.SESSION_TIMEOUT) {
+            if (now - data.lastActivity > this.sessionTimeout) {
                 expiredSessions.push(sessionId);
             }
         }
@@ -205,70 +222,62 @@ export class GeminiService {
     }
 
     public async createChatSession(sessionId: string): Promise<CreateChatSessionResult> {
-        // Create OAuth provider for this session if OAuth is configured
         const oauthProvider = await this.createOAuthProviderForSession(sessionId);
 
-        // First check if OAuth is required for this session
         if (oauthProvider) {
-            logger.debug('OAuth configured for new session - checking OAuth requirements');
+            const oauthCheck = await this.checkOAuthRequirement(oauthProvider);
 
-            try {
-                const oauthCheck = await this.checkOAuthRequirement(oauthProvider);
-
-                if (oauthCheck.required && oauthCheck.authorizationUrl) {
-                    logger.debug('OAuth required - returning authorization information');
-
-                    // Create client for this session
-                    const client = new CustomClient({
-                        name: 'streamable-http-client',
-                        version: '1.0.0'
-                    });
-
-                    // Store the session data
-                    this.chatSessions.set(sessionId, {
-                        session: undefined as any, // session will be created after OAuth
-                        client: client,
-                        oauthProvider: oauthProvider,
-                        transportInstance: oauthCheck.transportInstance,
-                        lastActivity: Date.now()
-                    });
-
-                    return {
-                        type: 'oauth_required',
-                        authorizationUrl: oauthCheck.authorizationUrl,
-                        message: `👋 Hi there! Before we continue, please take a moment to authenticate.`
-                    };
-                }
-
-                logger.debug('OAuth not required or tokens available');
-            } catch (error) {
-                logger.error('Error checking OAuth requirements:', error);
-                // Continue with normal flow if OAuth check fails
+            if (oauthCheck.required && oauthCheck.authorizationUrl) {
+                return this.createOAuthRequiredSession(sessionId, oauthProvider, oauthCheck);
             }
         }
 
-        // Create a new MCP client for this session
+        return this.createNormalChatSession(sessionId, oauthProvider);
+    }
+
+    private createOAuthRequiredSession(
+        sessionId: string,
+        oauthProvider: AuthorizationCodeOAuthProvider,
+        oauthCheck: { required: boolean; authorizationUrl?: string; transportInstance?: StreamableHTTPClientTransport }
+    ): OAuthRequiredResult {
+        logger.debug('OAuth required - returning authorization information');
+
         const client = new CustomClient({
             name: 'streamable-http-client',
             version: '1.0.0'
         });
-        const connectedClient = await this.createMCPClient(client, oauthProvider);
 
-        const chatSession = this.ai.chats.create({
-            model: 'gemini-2.5-flash',
-            config: {
-                systemInstruction: 'You are a friendly and efficient restaurant assistant. Start every conversation with a warm welcome and brief introduction of your capabilities as a restaurant AI assistant. Your goal is to help users browse the menu and place orders. Be polite and clear. When presenting menu items, include their ID, name, description, and price. When an order is placed, confirm the order details back to the user.',
-                tools: connectedClient ? [mcpToTool(connectedClient)] : [],
-            },
+        this.chatSessions.set(sessionId, {
+            session: undefined as any,
+            client,
+            oauthProvider,
+            transportInstance: oauthCheck.transportInstance,
+            lastActivity: Date.now()
         });
 
-        logger.debug('New chat session created:', chatSession);
+        return {
+            type: 'oauth_required',
+            authorizationUrl: oauthCheck.authorizationUrl!,
+            message: WELCOME_MESSAGE
+        };
+    }
 
-        // Store the session data
+    private async createNormalChatSession(
+        sessionId: string,
+        oauthProvider?: AuthorizationCodeOAuthProvider
+    ): Promise<ChatSessionResult> {
+        const client = new CustomClient({
+            name: 'streamable-http-client',
+            version: '1.0.0'
+        });
+
+        const connectedClient = await this.createMCPClient(client, oauthProvider);
+        const chatSession = this.createChatInstance(connectedClient);
+
         this.chatSessions.set(sessionId, {
             session: chatSession,
             client: connectedClient,
-            oauthProvider: oauthProvider,
+            oauthProvider,
             lastActivity: Date.now()
         });
 
@@ -278,6 +287,16 @@ export class GeminiService {
             type: 'chat',
             session: chatSession
         };
+    }
+
+    private createChatInstance(connectedClient?: CustomClient): Chat {
+        return this.ai.chats.create({
+            model: 'gemini-2.5-flash',
+            config: {
+                systemInstruction: SYSTEM_INSTRUCTION,
+                tools: connectedClient ? [mcpToTool(connectedClient)] : [],
+            },
+        });
     }
 
     /**
@@ -309,7 +328,6 @@ export class GeminiService {
             );
 
             // Try to connect - this should trigger OAuth if needed
-            //log  
             logger.debug("Attempting OAuth check connection with transport options:", { authProvider: 'Provided' });
 
             await client.connect(transport);
@@ -375,33 +393,17 @@ export class GeminiService {
 
     public async asynchandleOAuthCallback(code?: string, state?: string, error?: string, errorDescription?: string):
         Promise<{ success: boolean; message: string; sessionId?: string; error?: string; details?: string; }> {
-        let oauthProvider: AuthorizationCodeOAuthProvider | undefined;
-        if (state) {
-            oauthProvider = this.getOAuthProvider(state);
-        }
+        const oauthProvider = state ? this.getOAuthProvider(state) : undefined;
+
         if (error) {
-            logger.error('OAuth authorization error:', error, errorDescription);
-            // Try to clear pending URL for the session if state contains session ID
-            if (state) {
-                oauthProvider?.clearPendingAuthorizationUrl();
-            }
-            return {
-                success: false,
-                error: 'Authorization failed',
-                details: errorDescription || error,
-                message: 'OAuth authorization failed'
-            };
+            return this.handleOAuthError(error, errorDescription, state, oauthProvider);
         }
 
-        if (!code || !state) {
-            return {
-                success: false,
-                error: 'Missing authorization code or state parameter',
-                message: 'Invalid OAuth callback parameters'
-            };
+        const validation = this.validateOAuthCallbackParams(code, state);
+        if (!validation.valid) {
+            return validation.result!;
         }
 
-        // Find the session's OAuth provider using the state (which should be the session ID)
         if (!oauthProvider) {
             return {
                 success: false,
@@ -410,69 +412,89 @@ export class GeminiService {
             };
         }
 
-        // The MCP transport will handle the OAuth callback internally
-        // when it receives the authorization code. We just need to acknowledge receipt.
+        try {
+            return await this.completeOAuthFlow(code!, state!, oauthProvider);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            logger.error('Failed to complete OAuth flow:', error);
+            return {
+                success: false,
+                error: 'OAuth flow completion failed',
+                message: errorMessage
+            };
+        }
+    }
+
+    private handleOAuthError(
+        error: string,
+        errorDescription?: string,
+        state?: string,
+        oauthProvider?: AuthorizationCodeOAuthProvider
+    ): { success: boolean; message: string; error: string; details?: string } {
+        logger.error('OAuth authorization error:', error, errorDescription);
+
+        if (state && oauthProvider) {
+            oauthProvider.clearPendingAuthorizationUrl();
+        }
+
+        return {
+            success: false,
+            error: 'Authorization failed',
+            details: errorDescription || error,
+            message: 'OAuth authorization failed'
+        };
+    }
+
+    private validateOAuthCallbackParams(
+        code?: string,
+        state?: string
+    ): { valid: boolean; result?: { success: boolean; message: string; error: string } } {
+        if (!code || !state) {
+            return {
+                valid: false,
+                result: {
+                    success: false,
+                    error: 'Missing authorization code or state parameter',
+                    message: 'Invalid OAuth callback parameters'
+                }
+            };
+        }
+        return { valid: true };
+    }
+
+    private async completeOAuthFlow(
+        code: string,
+        state: string,
+        oauthProvider: AuthorizationCodeOAuthProvider
+    ): Promise<{ success: boolean; message: string; sessionId: string }> {
         logger.debug(`OAuth callback received for session ${state} - transport will complete authorization`);
 
-        // Clear the pending authorization URL since callback was received
-
-
-
-        // transportInstance finishauth
         const transport = this.getTransportInstance(state);
-
-        //log transport and code
         logger.debug('Finishing OAuth authorization with transport and code:', {
             transportExists: !!transport,
             codeExists: !!code,
             code: code
         });
-        if (transport && code) {
-            await oauthProvider?.exchangeCodeForTokens(this.oauthConfig.tokenEndpoint, code);
-            // await transport.finishAuth(code);
-            if (oauthProvider) {
-                //log tokens
-                logger.debug('OAuth tokens:', oauthProvider.tokens());
-                oauthProvider.clearPendingAuthorizationUrl();
-            }
 
+        if (transport && code) {
+            await oauthProvider.exchangeCodeForTokens(this.oauthConfig.tokenEndpoint, code);
+            logger.debug('OAuth tokens:', oauthProvider.tokens());
+            oauthProvider.clearPendingAuthorizationUrl();
         }
 
-        // Get existing session data and reuse the client
         const sessionData = this.chatSessions.get(state);
         if (!sessionData || !sessionData.client) {
-            return {
-                success: false,
-                error: 'Session client not found',
-                message: 'Session client not available'
-            };
+            throw new Error('Session client not found');
         }
 
-        // Create a new MCP client for this session
         const client = new CustomClient({
             name: 'streamable-http-client',
             version: '1.0.0'
         });
         const connectedClient = await this.createMCPClient(client, oauthProvider);
 
-        const chatSession = this.ai.chats.create({
-            model: 'gemini-2.5-flash',
-            config: {
-                systemInstruction: 'You are a friendly and efficient restaurant assistant. Your goal is to help users browse the menu and place orders. Be polite and clear. When presenting menu items, include their ID, name, description, and price. When an order is placed, confirm the order details back to the user.',
-                tools: connectedClient ? [mcpToTool(connectedClient)] : [],
-            },
-        });
+        const chatSession = this.createChatInstance(connectedClient);
 
-        // Create new chat session with existing client
-        // const chatSession = this.ai.chats.create({
-        //   model: 'gemini-2.5-flash',
-        //   config: {
-        //     systemInstruction: 'You are a friendly and efficient restaurant assistant. Your goal is to help users browse the menu and place orders. Be polite and clear. When presenting menu items, include their ID, name, description, and price. When an order is placed, confirm the order details back to the user.',
-        //     tools: sessionData.client ? [mcpToTool(sessionData.client)] : [],
-        //   },
-        // });
-
-        // Update the session data with new chat session
         this.chatSessions.set(state, {
             ...sessionData,
             session: chatSession,
@@ -489,38 +511,46 @@ export class GeminiService {
     }
 
     public async runChat(message: string, sessionId: string): Promise<ChatResponse> {
-        const sessionData = this.chatSessions.get(sessionId);
+        const sessionData = this.getChatSession(sessionId);
         if (!sessionData) {
-            throw new Error("Chat session not found.");
+            throw new Error('Chat session not found.');
         }
 
-        logger.debug("Processing message:", message);
+        logger.debug('Processing message:', message);
 
         try {
-            const response = await sessionData.session.sendMessage({ message: message });
-            logger.debug("Final AI response:", response.text);
+            const response = await sessionData.session.sendMessage({ message });
+            logger.debug('Final AI response:', response.text);
+
             return {
                 text: response.text || '',
             };
         } catch (error) {
-
-            // Check if this is an OAuth-related error
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-            // If OAuth is required, check if we have a pending authorization URL
-            if (sessionData.oauthProvider && (!sessionData.session || errorMessage.toLowerCase().includes('auth') || errorMessage.includes('unauthorized') || errorMessage.includes('401'))) {
-                const authUrl = sessionData.oauthProvider.getPendingAuthorizationUrl();
-                if (authUrl) {
-                    return {
-                        text: `Please authenticate with our restaurant system to continue.`,
-                        authorizationRequired: true,
-                        authorizationUrl: authUrl.toString(),
-                    };
-                }
-            }
-
-            logger.error("Error in chat processing:", error);
-            throw new Error(`Chat processing failed: ${errorMessage}`);
+            return this.handleChatError(error, sessionData);
         }
+    }
+
+    private handleChatError(error: unknown, sessionData: ChatSessionData): ChatResponse {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (sessionData.oauthProvider && (!sessionData.session || this.isOAuthRelatedError(errorMessage))) {
+            const authUrl = sessionData.oauthProvider.getPendingAuthorizationUrl();
+            if (authUrl) {
+                return {
+                    text: AUTHENTICATION_PROMPT,
+                    authorizationRequired: true,
+                    authorizationUrl: authUrl.toString(),
+                };
+            }
+        }
+
+        logger.error('Error in chat processing:', error);
+        throw new Error(`Chat processing failed: ${errorMessage}`);
+    }
+
+    private isOAuthRelatedError(errorMessage: string): boolean {
+        const oauthKeywords = ['auth', 'unauthorized', '401'];
+        return oauthKeywords.some(keyword =>
+            errorMessage.toLowerCase().includes(keyword)
+        );
     }
 }

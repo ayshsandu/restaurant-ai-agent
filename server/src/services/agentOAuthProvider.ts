@@ -248,11 +248,6 @@ export class AgentOAuthProvider implements OAuthClientProvider {
       redirect_uri: typeof this._redirectUrl === 'string' ? this._redirectUrl : this._redirectUrl.toString(),
     });
 
-    // Include client_secret if available
-    if (this._clientSecret) {
-      body.append('client_secret', this._clientSecret);
-    }
-
     const response = await fetch(tokenEndpoint, {
       method: 'POST',
       headers: {
