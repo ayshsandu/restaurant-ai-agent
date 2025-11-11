@@ -183,36 +183,6 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
         return this._codeVerifier;
     }
 
-    //   /**
-    //    * Override exchangeAuthorization from OAuthClientProvider to add logging
-    //    */
-    //   exchangeAuthorization(authorizationServerUrl: string | URL, params: {
-    //     metadata?: AuthorizationServerMetadata;
-    //     clientInformation: OAuthClientInformationMixed;
-    //     authorizationCode: string;
-    //     codeVerifier: string;
-    //     redirectUri: string | URL;
-    //     resource?: URL;
-    //     addClientAuthentication?: OAuthClientProvider['addClientAuthentication'];
-    //     fetchFn?: FetchLike;
-    //   }): Promise<OAuthTokens> {
-    //     console.log('OAuthClientProvider: Starting authorization code exchange', {
-    //       authorizationServerUrl: authorizationServerUrl.toString(),
-    //       clientId: params.clientInformation.client_id,
-    //       hasCodeVerifier: !!params.codeVerifier,
-    //       redirectUri: params.redirectUri.toString(),
-    //       resource: params.resource?.toString(),
-    //       sessionId: this._sessionId,
-    //       hasAgentProvider: !!this._agentProvider
-    //     });
-
-    //     return this.exchangeCodeForTokens(
-    //       params.authorizationCode,
-    //       authorizationServerUrl.toString(),
-    //       this._agentProvider?.getAgentTokens()?.access_token
-    //     );
-    //   }
-
     /**
      * Exchange authorization code for tokens with optional agent token
      */

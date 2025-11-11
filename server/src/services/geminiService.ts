@@ -1,7 +1,7 @@
 import { GoogleGenAI, Chat, mcpToTool } from '@google/genai';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { CustomClient } from './customClient.js';
-import { AuthorizationCodeOAuthProvider } from './simpleOAuthProvider.js';
+import { AuthorizationCodeOAuthProvider } from './OBOAuthProvider.js';
 import { AgentOAuthProvider } from './agentOAuthProvider.js';
 import { logger } from '../utils/logger.js';
 import { SYSTEM_INSTRUCTION } from './systemInstructions.js';
@@ -528,6 +528,8 @@ export class GeminiService {
 
     private handleChatError(error: unknown, sessionData: ChatSessionData): ChatResponse {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        // Handle OAuth-related errors first
         if (sessionData.oauthProvider && (!sessionData.session || this.isOAuthRelatedError(errorMessage))) {
             const authUrl = sessionData.oauthProvider.getPendingAuthorizationUrl();
             if (authUrl) {
@@ -539,8 +541,45 @@ export class GeminiService {
             }
         }
 
+        // Handle specific Gemini API errors with user-friendly messages
+        if (this.isGeminiOverloadError(errorMessage)) {
+            logger.warn('Gemini API overloaded:', errorMessage);
+            throw new Error('The AI model is currently overloaded. Please try again in a moment.');
+        }
+
+        if (this.isRateLimitError(errorMessage)) {
+            logger.warn('Rate limit exceeded:', errorMessage);
+            throw new Error('Please wait a moment before sending another message.');
+        }
+
+        if (this.isBadRequestError(errorMessage)) {
+            logger.warn('Bad request to Gemini API:', errorMessage);
+            throw new Error('There was an issue processing your message. Please try rephrasing your question.');
+        }
+
         logger.error('Error in chat processing:', error);
         throw new Error(`Chat processing failed: ${errorMessage}`);
+    }
+
+    private isGeminiOverloadError(errorMessage: string): boolean {
+        const overloadKeywords = ['overloaded', '503', 'unavailable', 'service unavailable', 'resource exhausted'];
+        return overloadKeywords.some(keyword =>
+            errorMessage.toLowerCase().includes(keyword.toLowerCase())
+        );
+    }
+
+    private isRateLimitError(errorMessage: string): boolean {
+        const rateLimitKeywords = ['rate limit', '429', 'quota', 'too many requests'];
+        return rateLimitKeywords.some(keyword =>
+            errorMessage.toLowerCase().includes(keyword.toLowerCase())
+        );
+    }
+
+    private isBadRequestError(errorMessage: string): boolean {
+        const badRequestKeywords = ['400', 'bad request', 'invalid request'];
+        return badRequestKeywords.some(keyword =>
+            errorMessage.toLowerCase().includes(keyword.toLowerCase())
+        );
     }
 
     private isOAuthRelatedError(errorMessage: string): boolean {

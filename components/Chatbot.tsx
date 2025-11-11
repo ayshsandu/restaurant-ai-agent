@@ -156,6 +156,12 @@ const Chatbot: React.FC<ChatbotProps> = memo(({ isOpen, onClose }) => {
                     errorText = "Unable to connect to the server. Please make sure the backend is running.";
                 } else if (error.message.includes('too long')) {
                     errorText = "Your message is too long. Please keep it under 1000 characters.";
+                } else if (error.message.includes('overloaded') || error.message.includes('503') || error.message.includes('UNAVAILABLE')) {
+                    errorText = "🤖 Our AI assistant is currently experiencing high demand. Please wait a moment and try again. You can also try asking a simpler question!";
+                } else if (error.message.includes('429') || error.message.includes('rate limit')) {
+                    errorText = "⏱️ Please wait a moment before sending another message. Our AI needs a brief rest!";
+                } else if (error.message.includes('400') || error.message.includes('Bad Request')) {
+                    errorText = "🔧 There seems to be an issue with your message format. Please try rephrasing your question.";
                 }
             }
 
