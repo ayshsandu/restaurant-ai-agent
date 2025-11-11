@@ -238,7 +238,7 @@ export class GeminiService {
     private createOAuthRequiredSession(
         sessionId: string,
         oauthProvider: AuthorizationCodeOAuthProvider,
-        oauthCheck: { required: boolean; authorizationUrl?: string; transportInstance?: StreamableHTTPClientTransport }
+        oauthCheck: { required: boolean; authorizationUrl?: string; }
     ): OAuthRequiredResult {
         logger.debug('OAuth required - returning authorization information');
 
@@ -251,7 +251,6 @@ export class GeminiService {
             session: undefined as any,
             client,
             oauthProvider,
-            transportInstance: oauthCheck.transportInstance,
             lastActivity: Date.now()
         });
 
@@ -302,7 +301,7 @@ export class GeminiService {
     /**
      * Check if OAuth is required and get authorization URL if needed
      */
-    public async checkOAuthRequirement(oauthProvider?: AuthorizationCodeOAuthProvider): Promise<{ required: boolean; authorizationUrl?: string, transportInstance?: StreamableHTTPClientTransport }> {
+    public async checkOAuthRequirement(oauthProvider?: AuthorizationCodeOAuthProvider): Promise<{ required: boolean; authorizationUrl?: string }> {
         if (!oauthProvider) {
             return { required: false };
         }
@@ -346,7 +345,6 @@ export class GeminiService {
                 return {
                     required: true,
                     authorizationUrl: authUrl.toString(),
-                    transportInstance: transport
                 };
             }
 
@@ -469,14 +467,12 @@ export class GeminiService {
     ): Promise<{ success: boolean; message: string; sessionId: string }> {
         logger.debug(`OAuth callback received for session ${state} - transport will complete authorization`);
 
-        const transport = this.getTransportInstance(state);
-        logger.debug('Finishing OAuth authorization with transport and code:', {
-            transportExists: !!transport,
+        logger.debug('Finishing OAuth authorization with code:', {
             codeExists: !!code,
             code: code
         });
 
-        if (transport && code) {
+        if (code) {
             await oauthProvider.exchangeCodeForTokens(this.oauthConfig.tokenEndpoint, code);
             logger.debug('OAuth tokens:', oauthProvider.tokens());
             oauthProvider.clearPendingAuthorizationUrl();
