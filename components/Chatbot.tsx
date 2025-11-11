@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import { Message, MessageRole } from '../types';
-import { apiService } from '../services/apiService';
+import { apiService } from '../services/agentService';
 
 interface ChatbotProps {
     isOpen: boolean;

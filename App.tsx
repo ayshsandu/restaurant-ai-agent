@@ -10,7 +10,7 @@ import Footer from './components/Footer';
 import Chatbot from './components/Chatbot';
 import ChatButton from './components/ChatButton';
 import { Message, MessageRole } from './types';
-import { apiService } from './services/apiService';
+import { apiService } from './services/agentService';
 
 const CONNECTION_ERROR_MESSAGE: Message = {
     id: 'connection-error',
