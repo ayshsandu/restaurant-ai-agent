@@ -15,7 +15,7 @@ const CartButton: React.FC<CartButtonProps> = memo(({ items, onClick }) => {
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-6 right-6 bg-amber-600 hover:bg-amber-700 text-white rounded-full shadow-lg transition-all duration-200 hover:scale-105 z-40"
+      className="fixed top-4 right-4 bg-amber-600 hover:bg-amber-700 text-white rounded-full shadow-lg transition-all duration-200 hover:scale-105 z-40"
       aria-label={`Open cart with ${totalItems} items`}
     >
       <div className="flex items-center space-x-3 px-4 py-3 min-w-[120px]">

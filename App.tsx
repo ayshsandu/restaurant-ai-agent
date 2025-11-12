@@ -49,6 +49,9 @@ const App: React.FC = memo(() => {
     }, []);
 
     const handleOpenChat = useCallback(() => {
+        setIsCartOpen(false); // Close cart if open
+        setIsOrderTrackingOpen(false); // Close order tracking if open
+        setIsCheckoutOpen(false); // Close checkout if open
         setIsChatOpen(true);
         setHasNewMessage(false);
     }, []);
@@ -69,6 +72,26 @@ const App: React.FC = memo(() => {
         };
         initializeCart();
     }, []);
+
+    // Handle ESC key to close modals
+    useEffect(() => {
+        const handleEscapeKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                if (isCheckoutOpen) {
+                    setIsCheckoutOpen(false);
+                } else if (isCartOpen) {
+                    setIsCartOpen(false);
+                } else if (isOrderTrackingOpen) {
+                    setIsOrderTrackingOpen(false);
+                } else if (isChatOpen) {
+                    setIsChatOpen(false);
+                }
+            }
+        };
+
+        document.addEventListener('keydown', handleEscapeKey);
+        return () => document.removeEventListener('keydown', handleEscapeKey);
+    }, [isCheckoutOpen, isCartOpen, isOrderTrackingOpen, isChatOpen]);
 
     // Cart management functions
     const handleAddToCart = useCallback(async (item: MenuItem) => {
@@ -147,6 +170,8 @@ const App: React.FC = memo(() => {
     }, []);
 
     const handleOpenCart = useCallback(() => {
+        setIsChatOpen(false); // Close chat if open
+        setIsOrderTrackingOpen(false); // Close order tracking if open
         setIsCartOpen(true);
     }, []);
 
@@ -164,6 +189,9 @@ const App: React.FC = memo(() => {
     }, []);
 
     const handleOpenOrderTracking = useCallback(() => {
+        setIsChatOpen(false); // Close chat if open
+        setIsCartOpen(false); // Close cart if open
+        setIsCheckoutOpen(false); // Close checkout if open
         setIsOrderTrackingOpen(true);
     }, []);
 
