@@ -1,6 +1,6 @@
 // Configuration for the backend API
-const AGENT_BASE_URL = import.meta.env.VITE_AGENT_BASE_URL || 'http://localhost:8000';
-console.log("API_BASE_URL:", AGENT_BASE_URL);
+const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:8000';
+console.log("BFF_BASE_URL:", BFF_BASE_URL);
 export interface ChatResponse {
   success: boolean;
   response?: string;
@@ -19,7 +19,7 @@ export class AgentService {
   private retryDelay: number = 1000; // 1 second
 
   private constructor() {
-    this.baseUrl = AGENT_BASE_URL;
+    this.baseUrl = BFF_BASE_URL;
   }
 
   public static getInstance(): AgentService {

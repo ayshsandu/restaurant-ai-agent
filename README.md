@@ -51,7 +51,7 @@ ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 ### Frontend Configuration
 The frontend automatically connects to `http://localhost:3001/api`. To change this, set:
 ```env
-VITE_API_BASE_URL=http://localhost:3001/api
+VITE_BFF_BASE_URL=http://localhost:3001/api
 ```
 
 ## 🔒 Security Features

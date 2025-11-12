@@ -176,7 +176,7 @@ MCP_OAUTH_TOKEN_ENDPOINT=https://your-oauth-provider.com/oauth/token
 
 ### Frontend (optional .env)
 ```env
-VITE_API_BASE_URL=http://localhost:3001/api
+VITE_BFF_BASE_URL=http://localhost:3001/api
 ```
 
 ## Development
@@ -200,7 +200,7 @@ npm run build        # Build for production
 1. **Backend**: Deploy to a cloud service (AWS, Google Cloud, etc.)
 2. **Environment**: Set production environment variables
 3. **CORS**: Update `ALLOWED_ORIGINS` to include your production domain
-4. **Frontend**: Update `VITE_API_BASE_URL` to your production backend URL
+4. **Frontend**: Update `VITE_BFF_BASE_URL` to your production backend URL
 
 ## Troubleshooting
 
@@ -212,7 +212,7 @@ npm run build        # Build for production
 ### Frontend Can't Connect
 - Ensure backend is running on port 3001
 - Check CORS settings in backend
-- Verify `VITE_API_BASE_URL` in frontend
+- Verify `VITE_BFF_BASE_URL` in frontend
 
 ### API Key Issues
 - Get a new key from https://makersuite.google.com/app/apikey

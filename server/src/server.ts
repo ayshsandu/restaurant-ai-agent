@@ -22,6 +22,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Backend API configuration
+const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:8000/api';
+
 // Trust proxy for rate limiting behind reverse proxies
 app.set('trust proxy', 1);
 
@@ -366,6 +369,143 @@ app.use((error: Error, req: express.Request, res: express.Response, _next: expre
       details: error.message,
       stack: error.stack?.split('\n').slice(0, 5) // First 5 lines of stack
     })
+  });
+});
+
+// Restaurant API Proxy Routes
+/**
+ * Proxy middleware for restaurant API endpoints
+ * Forwards all restaurant-related requests to the backend API
+ */
+
+// Helper function to create proxy requests
+const proxyRequest = async (req: express.Request, res: express.Response, endpoint: string) => {
+  try {
+    const url = `${BACKEND_API_URL}${endpoint}`;
+    const queryString = req.url.split('?')[1];
+    const fullUrl = queryString ? `${url}?${queryString}` : url;
+
+    const options: any = {
+      method: req.method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        // Forward any authorization headers if present
+        ...(req.headers.authorization && { 'Authorization': req.headers.authorization }),
+      },
+    };
+
+    // Add body for POST/PUT requests
+    if (req.method !== 'GET' && req.method !== 'DELETE') {
+      options.body = JSON.stringify(req.body);
+    }
+
+    logger.info(`Proxying ${req.method} request to: ${fullUrl}`);
+    
+    const response = await fetch(fullUrl, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+      logger.error(`Backend API error: ${response.status} - ${JSON.stringify(data)}`);
+      return res.status(response.status).json(data);
+    }
+
+    logger.info(`Successfully proxied request to ${fullUrl}`);
+    res.json(data);
+  } catch (error) {
+    logger.error('Proxy request failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('fetch')) {
+      return res.status(503).json({
+        success: false,
+        error: 'Backend service unavailable',
+        details: 'Unable to connect to restaurant API backend'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Proxy request failed',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : 'Internal server error'
+    });
+  }
+};
+
+// Menu API proxy routes
+app.get('/api/menu/categories', async (req, res) => {
+  await proxyRequest(req, res, '/menu/categories');
+});
+
+app.get('/api/menu/items', async (req, res) => {
+  await proxyRequest(req, res, '/menu/items');
+});
+
+app.get('/api/menu/items/:id', async (req, res) => {
+  await proxyRequest(req, res, `/menu/items/${req.params.id}`);
+});
+
+// Cart API proxy routes
+app.post('/api/cart', async (req, res) => {
+  await proxyRequest(req, res, '/cart');
+});
+
+app.get('/api/cart/:sessionId', async (req, res) => {
+  await proxyRequest(req, res, `/cart/${req.params.sessionId}`);
+});
+
+app.post('/api/cart/:sessionId/items', async (req, res) => {
+  await proxyRequest(req, res, `/cart/${req.params.sessionId}/items`);
+});
+
+app.delete('/api/cart/:sessionId/items/:itemId', async (req, res) => {
+  await proxyRequest(req, res, `/cart/${req.params.sessionId}/items/${req.params.itemId}`);
+});
+
+// Order API proxy routes
+app.post('/api/orders', async (req, res) => {
+  await proxyRequest(req, res, '/orders');
+});
+
+app.get('/api/orders', async (req, res) => {
+  await proxyRequest(req, res, '/orders');
+});
+
+app.get('/api/orders/:orderId', async (req, res) => {
+  await proxyRequest(req, res, `/orders/${req.params.orderId}`);
+});
+
+app.post('/api/orders/:orderId/notes', async (req, res) => {
+  await proxyRequest(req, res, `/orders/${req.params.orderId}/notes`);
+});
+
+app.put('/api/orders/:orderId/status', async (req, res) => {
+  await proxyRequest(req, res, `/orders/${req.params.orderId}/status`);
+});
+
+// 404 handler for undefined API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Endpoint not found',
+    path: req.originalUrl,
+    method: req.method,
+    availableEndpoints: [
+      'GET /api/health',
+      'POST /api/chat',
+      'GET /api/menu/categories',
+      'GET /api/menu/items',
+      'GET /api/menu/items/:id',
+      'POST /api/cart',
+      'GET /api/cart/:sessionId',
+      'POST /api/cart/:sessionId/items',
+      'DELETE /api/cart/:sessionId/items/:itemId',
+      'POST /api/orders',
+      'GET /api/orders',
+      'GET /api/orders/:orderId',
+      'POST /api/orders/:orderId/notes',
+      'PUT /api/orders/:orderId/status'
+    ]
   });
 });
 
