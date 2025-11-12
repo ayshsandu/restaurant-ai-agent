@@ -1,7 +1,11 @@
 
 import React, { memo, useState } from 'react';
 
-const Header: React.FC = memo(() => {
+interface HeaderProps {
+    onOpenOrderTracking: () => void;
+}
+
+const Header: React.FC<HeaderProps> = memo(({ onOpenOrderTracking }) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const scrollToSection = (sectionId: string) => {
@@ -47,6 +51,12 @@ const Header: React.FC = memo(() => {
                         >
                             Contact
                         </button>
+                        <button
+                            onClick={onOpenOrderTracking}
+                            className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                        >
+                            Track Order
+                        </button>
                     </div>
 
                     {/* Mobile Menu Button */}
@@ -91,6 +101,15 @@ const Header: React.FC = memo(() => {
                                 className="text-left text-gray-700 hover:text-gray-900 transition-colors font-medium"
                             >
                                 Contact
+                            </button>
+                            <button
+                                onClick={() => {
+                                    onOpenOrderTracking();
+                                    setIsMenuOpen(false);
+                                }}
+                                className="text-left bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                            >
+                                Track Order
                             </button>
                         </div>
                     </div>

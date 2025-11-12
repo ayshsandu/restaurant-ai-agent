@@ -1,6 +1,6 @@
 // Configuration for the backend API
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-
+const AGENT_BASE_URL = import.meta.env.VITE_AGENT_BASE_URL || 'http://localhost:8000';
+console.log("API_BASE_URL:", AGENT_BASE_URL);
 export interface ChatResponse {
   success: boolean;
   response?: string;
@@ -12,21 +12,21 @@ export interface ChatResponse {
   authorizationUrl?: string;
 }
 
-export class ApiService {
-  private static instance: ApiService;
+export class AgentService {
+  private static instance: AgentService;
   private baseUrl: string;
   private maxRetries: number = 3;
   private retryDelay: number = 1000; // 1 second
 
   private constructor() {
-    this.baseUrl = API_BASE_URL;
+    this.baseUrl = AGENT_BASE_URL;
   }
 
-  public static getInstance(): ApiService {
-    if (!ApiService.instance) {
-      ApiService.instance = new ApiService();
+  public static getInstance(): AgentService {
+    if (!AgentService.instance) {
+      AgentService.instance = new AgentService();
     }
-    return ApiService.instance;
+    return AgentService.instance;
   }
 
   private async makeRequest<T>(
@@ -151,4 +151,4 @@ export class ApiService {
 }
 
 // Export a singleton instance
-export const apiService = ApiService.getInstance();
+export const apiService = AgentService.getInstance();

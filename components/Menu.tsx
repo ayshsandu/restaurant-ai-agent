@@ -1,15 +1,6 @@
-import React, { memo, useState } from 'react';
-
-interface MenuItem {
-    id: string;
-    name: string;
-    description: string;
-    price: number;
-}
-
-interface CartItem extends MenuItem {
-    quantity: number;
-}
+import React, { memo, useState, useEffect } from 'react';
+import { MenuItem, CartItem } from '../types';
+import { apiService } from '../services/apiService';
 
 interface MenuProps {
     onAddToCart: (item: MenuItem) => void;
@@ -17,23 +8,82 @@ interface MenuProps {
 }
 
 const Menu: React.FC<MenuProps> = memo(({ onAddToCart, cartItems }) => {
-    const appetizers: MenuItem[] = [
-        { id: 'bruschetta', name: "Bruschetta, Tomato, Basil", description: "Grilled bread topped with fresh tomatoes, basil, and balsamic glaze", price: 12 },
-        { id: 'antipasto', name: "Antipasto Platter", description: "Selection of cured meats, cheeses, and marinated vegetables", price: 18 },
-        { id: 'calamari', name: "Calamari Fritti", description: "Crispy fried squid rings with marinara sauce", price: 16 }
-    ];
+    const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+    const [categories, setCategories] = useState<string[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    const mainCourses: MenuItem[] = [
-        { id: 'salmon', name: "Grilled Salmon", description: "Fresh Atlantic salmon with seasonal vegetables and lemon herb sauce", price: 28 },
-        { id: 'ribeye', name: "Ribeye Steak", description: "Prime ribeye with roasted potatoes and seasonal vegetables", price: 42 },
-        { id: 'chicken-parm', name: "Chicken Parmesan", description: "Breaded chicken breast with marinara sauce and melted mozzarella", price: 24 }
-    ];
+    useEffect(() => {
+        const fetchMenuData = async () => {
+            try {
+                setIsLoading(true);
+                const [categoriesResponse, itemsResponse] = await Promise.all([
+                    apiService.getMenuCategories(),
+                    apiService.getMenuItems()
+                ]);
+                
+                setCategories(['all', ...categoriesResponse]);
+                setMenuItems(itemsResponse);
+            } catch (err) {
+                console.error('Error fetching menu data:', err);
+                setError('Failed to load menu. Please try again later.');
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-    const desserts: MenuItem[] = [
-        { id: 'tiramisu', name: "Tiramisu", description: "Classic Italian dessert with coffee-soaked ladyfingers and mascarpone", price: 10 },
-        { id: 'panna-cotta', name: "Panna Cotta", description: "Silky vanilla custard with berry compote", price: 9 },
-        { id: 'gelato', name: "Gelato Selection", description: "House-made gelato in seasonal flavors", price: 8 }
-    ];
+        fetchMenuData();
+    }, []);
+
+    const filteredItems = selectedCategory === 'all' 
+        ? menuItems 
+        : menuItems.filter(item => item.category === selectedCategory);
+
+    const groupedItems = filteredItems.reduce((acc, item) => {
+        const category = item.category;
+        if (!acc[category]) {
+            acc[category] = [];
+        }
+        acc[category].push(item);
+        return acc;
+    }, {} as Record<string, MenuItem[]>);
+    if (isLoading) {
+        return (
+            <section id="menu" className="py-20" style={{ backgroundColor: '#2c2c2c' }}>
+                <div className="container mx-auto px-4">
+                    <div className="text-center">
+                        <h2 className="text-5xl font-bold text-white mb-4">OUR MENU</h2>
+                        <div className="flex justify-center items-center py-12">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+                            <span className="text-white ml-4">Loading menu...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        );
+    }
+
+    if (error) {
+        return (
+            <section id="menu" className="py-20" style={{ backgroundColor: '#2c2c2c' }}>
+                <div className="container mx-auto px-4">
+                    <div className="text-center">
+                        <h2 className="text-5xl font-bold text-white mb-4">OUR MENU</h2>
+                        <div className="text-center py-12">
+                            <p className="text-red-400 text-lg">{error}</p>
+                            <button 
+                                onClick={() => window.location.reload()} 
+                                className="mt-4 bg-amber-600 text-white px-6 py-2 rounded-lg hover:bg-amber-700 transition-colors"
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        );
+    }
 
     const getItemQuantity = (itemId: string) => {
         const cartItem = cartItems.find(item => item.id === itemId);
@@ -81,11 +131,42 @@ const Menu: React.FC<MenuProps> = memo(({ onAddToCart, cartItems }) => {
                     <p className="text-gray-300 text-lg">Select your favorite dishes and place your order online</p>
                 </div>
 
-                <div className="grid md:grid-cols-3 gap-12 max-w-6xl mx-auto">
-                    <MenuSection title="Appetizers" items={appetizers} />
-                    <MenuSection title="Main Courses" items={mainCourses} />
-                    <MenuSection title="Desserts" items={desserts} />
+                {/* Category Filter */}
+                <div className="flex justify-center mb-8">
+                    <div className="flex flex-wrap gap-2">
+                        {categories.map((category) => (
+                            <button
+                                key={category}
+                                onClick={() => setSelectedCategory(category)}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                    selectedCategory === category
+                                        ? 'bg-amber-600 text-white'
+                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                }`}
+                            >
+                                {category === 'all' ? 'All Categories' : category}
+                            </button>
+                        ))}
+                    </div>
                 </div>
+
+                {/* Menu Items */}
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 max-w-7xl mx-auto">
+                    {Object.entries(groupedItems).map(([categoryName, items]) => (
+                        <div key={categoryName}>
+                            <MenuSection 
+                                title={categoryName} 
+                                items={items as MenuItem[]} 
+                            />
+                        </div>
+                    ))}
+                </div>
+
+                {filteredItems.length === 0 && !isLoading && (
+                    <div className="text-center py-12">
+                        <p className="text-gray-400 text-lg">No items found in this category</p>
+                    </div>
+                )}
             </div>
         </section>
     );
