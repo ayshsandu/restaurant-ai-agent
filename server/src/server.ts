@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import compression from 'compression';
 import dotenv from 'dotenv';
-import { GeminiService } from './services/geminiService.js';
+import { GeminiService } from './agent/geminiService.js';
 
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from './utils/logger.js';
