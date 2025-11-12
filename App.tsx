@@ -32,7 +32,7 @@ const App: React.FC = memo(() => {
     const [lastOrderId, setLastOrderId] = useState<string>('');
     const [lastEstimatedTime, setLastEstimatedTime] = useState<number>(30);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
-    const [cartSessionId, setCartSessionId] = useState<string | null>(null);
+    const [currentCartId, setCartId] = useState<string | null>(null);
     const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
     const [hasNewMessage, setHasNewMessage] = useState(false);
 
@@ -69,7 +69,7 @@ const App: React.FC = memo(() => {
         const initializeCart = async () => {
             try {
                 const session = await apiService.createCart();
-                setCartSessionId(session.session_id);
+                setCartId(session.session_id);
             } catch (error) {
                 console.error('Failed to initialize cart:', error);
             }
@@ -101,10 +101,10 @@ const App: React.FC = memo(() => {
 
     // Cart management functions
     const handleAddToCart = useCallback(async (item: MenuItem) => {
-        if (!cartSessionId) return;
+        if (!currentCartId) return;
         
         try {
-            const response = await apiService.addToCart(cartSessionId, item.id, 1);
+            const response = await apiService.addToCart(currentCartId, item.id, 1);
             // Convert API cart items to local cart format
             const updatedItems = response.cart.map(apiItem => ({
                 id: apiItem.item_id,
@@ -118,10 +118,10 @@ const App: React.FC = memo(() => {
         } catch (error) {
             console.error('Failed to add item to cart:', error);
         }
-    }, [cartSessionId]);
+    }, [currentCartId]);
 
     const handleUpdateQuantity = useCallback(async (itemId: string, quantity: number) => {
-        if (!cartSessionId) return;
+        if (!currentCartId) return;
         
         if (quantity <= 0) {
             handleRemoveItem(itemId);
@@ -130,9 +130,9 @@ const App: React.FC = memo(() => {
         
         try {
             // Remove existing item and add with new quantity
-            await apiService.removeFromCart(cartSessionId, itemId);
+            await apiService.removeFromCart(currentCartId, itemId);
             if (quantity > 0) {
-                const response = await apiService.addToCart(cartSessionId, itemId, quantity);
+                const response = await apiService.addToCart(currentCartId, itemId, quantity);
                 const updatedItems = response.cart.map(apiItem => ({
                     id: apiItem.item_id,
                     name: apiItem.name,
@@ -146,13 +146,13 @@ const App: React.FC = memo(() => {
         } catch (error) {
             console.error('Failed to update item quantity:', error);
         }
-    }, [cartSessionId]);
+    }, [currentCartId]);
 
     const handleRemoveItem = useCallback(async (itemId: string) => {
-        if (!cartSessionId) return;
+        if (!currentCartId) return;
         
         try {
-            const response = await apiService.removeFromCart(cartSessionId, itemId);
+            const response = await apiService.removeFromCart(currentCartId, itemId);
             const updatedItems = response.cart.map(apiItem => ({
                 id: apiItem.item_id,
                 name: apiItem.name,
@@ -165,7 +165,7 @@ const App: React.FC = memo(() => {
         } catch (error) {
             console.error('Failed to remove item from cart:', error);
         }
-    }, [cartSessionId]);
+    }, [currentCartId]);
 
     const handleAddSpecialInstructions = useCallback((itemId: string, instructions: string) => {
         setCartItems(prevItems =>
@@ -211,7 +211,7 @@ const App: React.FC = memo(() => {
     }, []);
 
     const handlePlaceOrder = useCallback(async (customer: Customer, orderType: 'delivery' | 'pickup' | 'dine-in', notes?: string) => {
-        if (!cartSessionId) {
+        if (!currentCartId) {
             throw new Error('No cart session available');
         }
         
@@ -225,7 +225,7 @@ const App: React.FC = memo(() => {
                 notes
             };
 
-            const result = await apiService.createOrder(cartSessionId, customerInfo);
+            const result = await apiService.createOrder(currentCartId, customerInfo);
             
             // Clear cart after successful order
             setCartItems([]);
@@ -233,7 +233,7 @@ const App: React.FC = memo(() => {
             
             // Create new cart session for next order
             const newSession = await apiService.createCart();
-            setCartSessionId(newSession.session_id);
+            setCartId(newSession.session_id);
             
             // Show success modal instead of alert
             setLastOrderId(result.order_id);
@@ -249,7 +249,7 @@ const App: React.FC = memo(() => {
             console.error('Failed to place order:', error);
             throw error;
         }
-    }, [cartSessionId]);
+    }, [currentCartId]);
 
     return (
         <div className="min-h-screen bg-amber-50">
