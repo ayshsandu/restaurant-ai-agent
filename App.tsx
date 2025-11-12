@@ -8,6 +8,7 @@ import Cart from './components/Cart';
 import CartButton from './components/CartButton';
 import Checkout from './components/Checkout';
 import OrderTracking from './components/OrderTracking';
+import OrderSuccessModal from './components/OrderSuccessModal';
 import ReviewsAndLocation from './components/ReviewsAndLocation';
 import Contact from './components/Contact';
 import Footer from './components/Footer';
@@ -27,6 +28,9 @@ const App: React.FC = memo(() => {
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
     const [isOrderTrackingOpen, setIsOrderTrackingOpen] = useState(false);
+    const [isOrderSuccessOpen, setIsOrderSuccessOpen] = useState(false);
+    const [lastOrderId, setLastOrderId] = useState<string>('');
+    const [lastEstimatedTime, setLastEstimatedTime] = useState<number>(30);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [cartSessionId, setCartSessionId] = useState<string | null>(null);
     const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
@@ -83,6 +87,8 @@ const App: React.FC = memo(() => {
                     setIsCartOpen(false);
                 } else if (isOrderTrackingOpen) {
                     setIsOrderTrackingOpen(false);
+                } else if (isOrderSuccessOpen) {
+                    setIsOrderSuccessOpen(false);
                 } else if (isChatOpen) {
                     setIsChatOpen(false);
                 }
@@ -91,7 +97,7 @@ const App: React.FC = memo(() => {
 
         document.addEventListener('keydown', handleEscapeKey);
         return () => document.removeEventListener('keydown', handleEscapeKey);
-    }, [isCheckoutOpen, isCartOpen, isOrderTrackingOpen, isChatOpen]);
+    }, [isCheckoutOpen, isCartOpen, isOrderTrackingOpen, isOrderSuccessOpen, isChatOpen]);
 
     // Cart management functions
     const handleAddToCart = useCallback(async (item: MenuItem) => {
@@ -192,11 +198,16 @@ const App: React.FC = memo(() => {
         setIsChatOpen(false); // Close chat if open
         setIsCartOpen(false); // Close cart if open
         setIsCheckoutOpen(false); // Close checkout if open
+        setIsOrderSuccessOpen(false); // Close success modal if open
         setIsOrderTrackingOpen(true);
     }, []);
 
     const handleCloseOrderTracking = useCallback(() => {
         setIsOrderTrackingOpen(false);
+    }, []);
+
+    const handleCloseOrderSuccess = useCallback(() => {
+        setIsOrderSuccessOpen(false);
     }, []);
 
     const handlePlaceOrder = useCallback(async (customer: Customer, orderType: 'delivery' | 'pickup' | 'dine-in', notes?: string) => {
@@ -224,8 +235,10 @@ const App: React.FC = memo(() => {
             const newSession = await apiService.createCart();
             setCartSessionId(newSession.session_id);
             
-            // Show success message (you could add a toast notification here)
-            alert(`Order placed successfully! Order ID: ${result.order_id}`);
+            // Show success modal instead of alert
+            setLastOrderId(result.order_id);
+            setLastEstimatedTime(30); // Default since API doesn't provide this
+            setIsOrderSuccessOpen(true);
             
             return {
                 orderId: result.order_id,
@@ -287,6 +300,15 @@ const App: React.FC = memo(() => {
             <OrderTracking
                 isOpen={isOrderTrackingOpen}
                 onClose={handleCloseOrderTracking}
+            />
+
+            {/* Order Success Modal */}
+            <OrderSuccessModal
+                isOpen={isOrderSuccessOpen}
+                onClose={handleCloseOrderSuccess}
+                onTrackOrder={handleOpenOrderTracking}
+                orderId={lastOrderId}
+                estimatedTime={lastEstimatedTime}
             />
 
             {/* Chatbot Modal */}
