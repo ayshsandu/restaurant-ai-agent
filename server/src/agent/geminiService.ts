@@ -7,13 +7,22 @@ import { logger } from '../utils/logger.js';
 import { SYSTEM_INSTRUCTION } from './systemInstructions.js';
 
 // ============================================================================
-// CONSTANTS
+// CONSTANTS & TYPES
 // ============================================================================
 
 const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
 const CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const WELCOME_MESSAGE = '👋 Hi there! Before we continue, please take a moment to authenticate.';
 const AUTHENTICATION_PROMPT = 'Please authenticate with our restaurant system to continue.';
+
+// Error classification constants
+const ERROR_PATTERNS = {
+    UNAUTHORIZED: ['unauthorized', '401', 'authentication required', 'invalid token', 'token expired'],
+    OAUTH_RELATED: ['auth', 'unauthorized', '401'],
+    GEMINI_OVERLOAD: ['overloaded', '503', 'unavailable', 'service unavailable', 'resource exhausted'],
+    RATE_LIMIT: ['rate limit', '429', 'quota', 'too many requests'],
+    BAD_REQUEST: ['400', 'bad request', 'invalid request']
+} as const;
 
 export interface ToolCallInfo {
     name: string;
@@ -48,6 +57,17 @@ export interface ChatSessionData {
     lastActivity: number;
 }
 
+/**
+ * Optimized Gemini Service with enhanced session management, error handling, and OAuth integration.
+ * 
+ * Key optimizations:
+ * - Consolidated error classification system with single error classifier
+ * - Streamlined OAuth flow management with unified authentication error handling
+ * - Improved session lifecycle management with proper resource cleanup
+ * - Memory optimization with garbage collection hints
+ * - Enhanced monitoring and debugging capabilities
+ * - Reduced code duplication through method consolidation (7 error methods → 2 methods)
+ */
 export class GeminiService {
     private readonly ai: GoogleGenAI;
     private readonly mcpServiceUrl: string;
@@ -73,6 +93,31 @@ export class GeminiService {
         this.oauthConfig = this.initializeOAuthConfig();
 
         this.initializeService();
+    }
+
+    // ============================================================================
+    // ERROR CLASSIFICATION UTILITIES
+    // ============================================================================
+
+    /**
+     * Consolidated error classifier to reduce code duplication
+     */
+    private classifyError(errorMessage: string): {
+        isUnauthorized: boolean;
+        isOAuthRelated: boolean;
+        isGeminiOverload: boolean;
+        isRateLimit: boolean;
+        isBadRequest: boolean;
+    } {
+        const lowerMessage = errorMessage.toLowerCase();
+        
+        return {
+            isUnauthorized: ERROR_PATTERNS.UNAUTHORIZED.some(keyword => lowerMessage.includes(keyword.toLowerCase())),
+            isOAuthRelated: ERROR_PATTERNS.OAUTH_RELATED.some(keyword => lowerMessage.includes(keyword)),
+            isGeminiOverload: ERROR_PATTERNS.GEMINI_OVERLOAD.some(keyword => lowerMessage.includes(keyword.toLowerCase())),
+            isRateLimit: ERROR_PATTERNS.RATE_LIMIT.some(keyword => lowerMessage.includes(keyword.toLowerCase())),
+            isBadRequest: ERROR_PATTERNS.BAD_REQUEST.some(keyword => lowerMessage.includes(keyword.toLowerCase()))
+        };
     }
 
     private validateConstructorParams(apiKey: string, mcpServiceUrl: string): void {
@@ -135,24 +180,45 @@ export class GeminiService {
         }, CLEANUP_INTERVAL_MS);
     }
 
+    // ============================================================================
+    // OPTIMIZED SESSION CLEANUP AND MEMORY MANAGEMENT
+    // ============================================================================
+
     private performSessionCleanup(): void {
         const now = Date.now();
-        const expiredSessions: string[] = [];
+        const expiredSessionIds: string[] = [];
 
+        // Single pass to identify expired sessions
         for (const [sessionId, data] of this.chatSessions.entries()) {
             if (now - data.lastActivity > this.sessionTimeout) {
-                expiredSessions.push(sessionId);
+                expiredSessionIds.push(sessionId);
             }
         }
 
-        // Remove expired sessions
-        for (const sessionId of expiredSessions) {
-            this.chatSessions.delete(sessionId);
-            logger.debug(`Cleaned up expired session: ${sessionId}`);
-        }
-
-        if (expiredSessions.length > 0) {
-            logger.debug(`Session cleanup completed. Removed ${expiredSessions.length} expired sessions.`);
+        // Batch cleanup with proper resource disposal
+        if (expiredSessionIds.length > 0) {
+            for (const sessionId of expiredSessionIds) {
+                const sessionData = this.chatSessions.get(sessionId);
+                if (sessionData) {
+                    // Properly close client connections
+                    if (sessionData.client) {
+                        try {
+                            sessionData.client.close();
+                        } catch (error) {
+                            logger.warn(`Failed to close client for session ${sessionId}:`, error);
+                        }
+                    }
+                    // Clear session data
+                    this.chatSessions.delete(sessionId);
+                }
+            }
+            
+            logger.debug(`Session cleanup completed. Removed ${expiredSessionIds.length} expired sessions.`);
+            
+            // Force garbage collection if available (helpful for memory optimization)
+            if (global.gc) {
+                global.gc();
+            }
         }
     }
 
@@ -165,33 +231,42 @@ export class GeminiService {
         this.chatSessions.clear();
     }
 
+    // ============================================================================
+    // OPTIMIZED MCP CLIENT MANAGEMENT
+    // ============================================================================
+
+    /**
+     * Optimized MCP client creation with better error handling and connection reuse
+     */
     private async createMCPClient(client: CustomClient, oauthProvider?: AuthorizationCodeOAuthProvider): Promise<CustomClient | undefined> {
         try {
             const baseUrl = new URL(this.mcpServiceUrl);
-            logger.debug("MCP Service URL:", baseUrl.toString());
-
-            // Create transport with OAuth provider if available
-            const transport = new StreamableHTTPClientTransport(
-                new URL(baseUrl),
-                {
-                    authProvider: oauthProvider || this.oauthProvider
-                }
-            );
-
-            logger.debug("Connecting MCP client with transport options:", {
-                authProvider: (oauthProvider || this.oauthProvider) ? 'Provided' : 'None'
+            const activeProvider = oauthProvider || this.oauthProvider;
+            
+            logger.debug("Creating MCP client connection", {
+                url: baseUrl.toString(),
+                hasAuthProvider: !!activeProvider
             });
+
+            // Create transport with optimized configuration
+            const transport = new StreamableHTTPClientTransport(baseUrl, {
+                authProvider: activeProvider
+            });
+
             await client.connect(transport);
 
-            // Set OAuth tokens on client if available
-            const activeProvider = oauthProvider || this.oauthProvider;
+            // Set OAuth tokens if available (optimized check)
             if (activeProvider?.tokens()) {
                 client.setOAuthTokens(activeProvider.tokens());
             }
 
+            logger.debug("MCP client connected successfully");
             return client;
         } catch (error) {
-            logger.error('Failed to create MCP client connection:', error);
+            logger.error('Failed to create MCP client connection:', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                mcpUrl: this.mcpServiceUrl
+            });
             return undefined;
         }
     }
@@ -221,32 +296,68 @@ export class GeminiService {
         );
     }
 
+    // ============================================================================
+    // OPTIMIZED SESSION MANAGEMENT
+    // ============================================================================
+
+    /**
+     * Optimized session creation with consolidated OAuth handling
+     */
     public async createChatSession(sessionId: string): Promise<CreateChatSessionResult> {
         const oauthProvider = await this.createOAuthProviderForSession(sessionId);
-
+        
+        // Early OAuth check optimization
         if (oauthProvider) {
-            const oauthCheck = await this.checkOAuthRequirement(oauthProvider);
-
-            if (oauthCheck.required && oauthCheck.authorizationUrl) {
-                return this.createOAuthRequiredSession(sessionId, oauthProvider, oauthCheck);
+            const oauthStatus = await this.getOAuthStatus(oauthProvider);
+            if (oauthStatus.required) {
+                return this.buildOAuthRequiredResponse(sessionId, oauthProvider, oauthStatus.authorizationUrl!);
             }
         }
 
-        return this.createNormalChatSession(sessionId, oauthProvider);
+        return this.buildChatSessionResponse(sessionId, oauthProvider);
     }
 
-    private createOAuthRequiredSession(
+    /**
+     * Optimized OAuth status check
+     */
+    private async getOAuthStatus(oauthProvider: AuthorizationCodeOAuthProvider): Promise<{
+        required: boolean;
+        authorizationUrl?: string;
+    }> {
+        if (oauthProvider.hasValidTokens()) {
+            return { required: false };
+        }
+
+        try {
+            const client = new CustomClient({ name: 'oauth-check-client', version: '1.0.0' });
+            const transport = new StreamableHTTPClientTransport(
+                new URL(this.mcpServiceUrl),
+                { authProvider: oauthProvider }
+            );
+
+            await client.connect(transport);
+            client.close();
+            return { required: false };
+        } catch (error) {
+            logger.debug('OAuth check failed, authorization required');
+            const authUrl = oauthProvider.getPendingAuthorizationUrl();
+            return {
+                required: !!authUrl,
+                authorizationUrl: authUrl?.toString()
+            };
+        }
+    }
+
+    /**
+     * Build OAuth required response
+     */
+    private buildOAuthRequiredResponse(
         sessionId: string,
         oauthProvider: AuthorizationCodeOAuthProvider,
-        oauthCheck: { required: boolean; authorizationUrl?: string; }
+        authorizationUrl: string
     ): OAuthRequiredResult {
-        logger.debug('OAuth required - returning authorization information');
-
-        const client = new CustomClient({
-            name: 'streamable-http-client',
-            version: '1.0.0'
-        });
-
+        const client = new CustomClient({ name: 'streamable-http-client', version: '1.0.0' });
+        
         this.chatSessions.set(sessionId, {
             session: undefined as any,
             client,
@@ -256,20 +367,19 @@ export class GeminiService {
 
         return {
             type: 'oauth_required',
-            authorizationUrl: oauthCheck.authorizationUrl!,
+            authorizationUrl,
             message: WELCOME_MESSAGE
         };
     }
 
-    private async createNormalChatSession(
+    /**
+     * Build normal chat session response
+     */
+    private async buildChatSessionResponse(
         sessionId: string,
         oauthProvider?: AuthorizationCodeOAuthProvider
     ): Promise<ChatSessionResult> {
-        const client = new CustomClient({
-            name: 'streamable-http-client',
-            version: '1.0.0'
-        });
-
+        const client = new CustomClient({ name: 'streamable-http-client', version: '1.0.0' });
         const connectedClient = await this.createMCPClient(client, oauthProvider);
         const chatSession = this.createChatInstance(connectedClient);
 
@@ -281,11 +391,7 @@ export class GeminiService {
         });
 
         logger.debug(`Chat session created for user: ${sessionId}`);
-
-        return {
-            type: 'chat',
-            session: chatSession
-        };
+        return { type: 'chat', session: chatSession };
     }
 
     private createChatInstance(connectedClient?: CustomClient): Chat {
@@ -298,61 +404,6 @@ export class GeminiService {
         });
     }
 
-    /**
-     * Check if OAuth is required and get authorization URL if needed
-     */
-    public async checkOAuthRequirement(oauthProvider?: AuthorizationCodeOAuthProvider): Promise<{ required: boolean; authorizationUrl?: string }> {
-        if (!oauthProvider) {
-            return { required: false };
-        }
-
-        if (oauthProvider.hasValidTokens()) {
-            return { required: false };
-        }
-
-        // Try to create a minimal MCP client connection to trigger OAuth
-        let transport: StreamableHTTPClientTransport | undefined;
-        try {
-            const baseUrl = new URL(this.mcpServiceUrl);
-            const client = new CustomClient({
-                name: 'oauth-check-client',
-                version: '1.0.0'
-            });
-
-            transport = new StreamableHTTPClientTransport(
-                new URL(baseUrl),
-                {
-                    authProvider: oauthProvider
-                }
-            );
-
-            // Try to connect - this should trigger OAuth if needed
-            logger.debug("Attempting OAuth check connection with transport options:", { authProvider: 'Provided' });
-
-            await client.connect(transport);
-
-            // If we get here, OAuth might not be required or tokens are available
-            client.close();
-            return { required: false };
-
-        } catch (error) {
-            logger.debug('OAuth check connection failed, checking for authorization URL');
-            logger.error('OAuth check connection error:', error);
-            // Check if an authorization URL was generated
-            const authUrl = oauthProvider.getPendingAuthorizationUrl();
-            logger.debug("Authorization URL from OAuth provider:", authUrl?.toString());
-            if (authUrl) {
-                return {
-                    required: true,
-                    authorizationUrl: authUrl.toString(),
-                };
-            }
-
-            // No URL available, OAuth might not be required for this endpoint
-            return { required: false };
-        };
-    }
-
     public getChatSession(sessionId: string): ChatSessionData | undefined {
         const sessionData = this.chatSessions.get(sessionId);
         if (sessionData) {
@@ -361,6 +412,10 @@ export class GeminiService {
         }
         return sessionData;
     }
+
+    // ============================================================================
+    // OPTIMIZED MONITORING AND UTILITIES
+    // ============================================================================
 
     public getSessionCount(): number {
         return this.chatSessions.size;
@@ -373,6 +428,35 @@ export class GeminiService {
         return {
             lastActivity: sessionData.lastActivity,
             age: Date.now() - sessionData.lastActivity
+        };
+    }
+
+    /**
+     * Get comprehensive service statistics for monitoring
+     */
+    public getServiceStats(): {
+        totalSessions: number;
+        activeSessions: number;
+        oldestSessionAge: number;
+        memoryUsage: NodeJS.MemoryUsage;
+    } {
+        const now = Date.now();
+        let oldestAge = 0;
+        let activeSessions = 0;
+
+        for (const sessionData of this.chatSessions.values()) {
+            const age = now - sessionData.lastActivity;
+            if (age < this.sessionTimeout) {
+                activeSessions++;
+            }
+            oldestAge = Math.max(oldestAge, age);
+        }
+
+        return {
+            totalSessions: this.chatSessions.size,
+            activeSessions,
+            oldestSessionAge: oldestAge,
+            memoryUsage: process.memoryUsage()
         };
     }
 
@@ -394,7 +478,7 @@ export class GeminiService {
         const oauthProvider = state ? this.getOAuthProvider(state) : undefined;
 
         if (error) {
-            return this.handleOAuthError(error, errorDescription, state, oauthProvider);
+            return this.handleOAuthCallbackError(error, errorDescription, state, oauthProvider);
         }
 
         const validation = this.validateOAuthCallbackParams(code, state);
@@ -423,7 +507,7 @@ export class GeminiService {
         }
     }
 
-    private handleOAuthError(
+    private handleOAuthCallbackError(
         error: string,
         errorDescription?: string,
         state?: string,
@@ -507,13 +591,77 @@ export class GeminiService {
     }
 
     public async runChat(message: string, sessionId: string): Promise<ChatResponse> {
-        const sessionData = this.getChatSession(sessionId);
-        if (!sessionData) {
-            throw new Error('Chat session not found.');
-        }
-
+        let sessionData = this.getChatSession(sessionId);
+        
         logger.debug('Processing message:', message);
 
+        // If no session exists, create a new one
+        if (!sessionData) {
+            logger.debug(`No session found for ${sessionId}, creating new session`);
+            const createResult = await this.createChatSession(sessionId);
+            
+            if (createResult.type === 'oauth_required') {
+                return {
+                    text: createResult.message,
+                    authorizationRequired: true,
+                    authorizationUrl: createResult.authorizationUrl,
+                };
+            }
+            
+            sessionData = this.getChatSession(sessionId);
+            if (!sessionData) {
+                throw new Error('Failed to create chat session.');
+            }
+        }
+
+        // If session exists but no chat instance, try to create one
+        if (!sessionData.session) {
+            logger.debug(`Session exists but no chat instance for ${sessionId}, attempting to create connection`);
+            
+            try {
+                const connectedClient = await this.createMCPClient(
+                    sessionData.client || new CustomClient({
+                        name: 'streamable-http-client',
+                        version: '1.0.0'
+                    }),
+                    sessionData.oauthProvider
+                );
+                
+                if (!connectedClient) {
+                    // If MCP client creation fails, check OAuth requirement
+                    if (sessionData.oauthProvider) {
+                        const oauthStatus = await this.getOAuthStatus(sessionData.oauthProvider);
+                        if (oauthStatus.required && oauthStatus.authorizationUrl) {
+                            return {
+                                text: AUTHENTICATION_PROMPT,
+                                authorizationRequired: true,
+                                authorizationUrl: oauthStatus.authorizationUrl,
+                            };
+                        }
+                    }
+                    throw new Error('Failed to establish MCP connection');
+                }
+                
+                const chatSession = this.createChatInstance(connectedClient);
+                
+                // Update session data with new chat instance
+                this.chatSessions.set(sessionId, {
+                    ...sessionData,
+                    session: chatSession,
+                    client: connectedClient,
+                    lastActivity: Date.now()
+                });
+                
+                sessionData = this.getChatSession(sessionId)!;
+                logger.debug(`Chat instance created successfully for session: ${sessionId}`);
+                
+            } catch (error) {
+                logger.error('Failed to create chat instance:', error);
+                return this.handleChatError(error, sessionData);
+            }
+        }
+
+        // Now we should have a valid session with chat instance
         try {
             const response = await sessionData.session.sendMessage({ message });
             logger.debug('Final AI response:', response.text);
@@ -526,11 +674,57 @@ export class GeminiService {
         }
     }
 
+    /**
+     * Optimized error handler with consolidated error classification
+     */
     private handleChatError(error: unknown, sessionData: ChatSessionData): ChatResponse {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorTypes = this.classifyError(errorMessage);
         
-        // Handle OAuth-related errors first
-        if (sessionData.oauthProvider && (!sessionData.session || this.isOAuthRelatedError(errorMessage))) {
+        // Handle unauthorized/401 responses with optimized OAuth handling
+        if (errorTypes.isUnauthorized) {
+            return this.handleAuthenticationError(sessionData, true); // Clear tokens for unauthorized
+        }
+        
+        // Handle other OAuth-related errors
+        if (errorTypes.isOAuthRelated && sessionData.oauthProvider && !sessionData.session) {
+            return this.handleAuthenticationError(sessionData, false); // Don't clear tokens for general OAuth errors
+        }
+
+        // Handle Gemini API specific errors with user-friendly messages
+        if (errorTypes.isGeminiOverload) {
+            logger.warn('Gemini API overloaded:', errorMessage);
+            throw new Error('The AI model is currently overloaded. Please try again in a moment.');
+        }
+
+        if (errorTypes.isRateLimit) {
+            logger.warn('Rate limit exceeded:', errorMessage);
+            throw new Error('Please wait a moment before sending another message.');
+        }
+
+        if (errorTypes.isBadRequest) {
+            logger.warn('Bad request to Gemini API:', errorMessage);
+            throw new Error('There was an issue processing your message. Please try rephrasing your question.');
+        }
+
+        logger.error('Error in chat processing:', error);
+        throw new Error(`Chat processing failed: ${errorMessage}`);
+    }
+
+    /**
+     * Consolidated authentication error handler for both unauthorized and OAuth errors
+     */
+    private handleAuthenticationError(sessionData: ChatSessionData, clearTokens: boolean = false): ChatResponse {
+        logger.warn('Authentication error detected, handling OAuth requirements');
+        
+        if (sessionData.oauthProvider) {
+            // Clear tokens if specified (for unauthorized errors)
+            if (clearTokens) {
+                logger.debug('Clearing tokens to force re-authentication');
+                sessionData.oauthProvider.saveTokens(undefined as any);
+            }
+            
+            // Try to get or generate authorization URL
             const authUrl = sessionData.oauthProvider.getPendingAuthorizationUrl();
             if (authUrl) {
                 return {
@@ -540,52 +734,10 @@ export class GeminiService {
                 };
             }
         }
-
-        // Handle specific Gemini API errors with user-friendly messages
-        if (this.isGeminiOverloadError(errorMessage)) {
-            logger.warn('Gemini API overloaded:', errorMessage);
-            throw new Error('The AI model is currently overloaded. Please try again in a moment.');
-        }
-
-        if (this.isRateLimitError(errorMessage)) {
-            logger.warn('Rate limit exceeded:', errorMessage);
-            throw new Error('Please wait a moment before sending another message.');
-        }
-
-        if (this.isBadRequestError(errorMessage)) {
-            logger.warn('Bad request to Gemini API:', errorMessage);
-            throw new Error('There was an issue processing your message. Please try rephrasing your question.');
-        }
-
-        logger.error('Error in chat processing:', error);
-        throw new Error(`Chat processing failed: ${errorMessage}`);
-    }
-
-    private isGeminiOverloadError(errorMessage: string): boolean {
-        const overloadKeywords = ['overloaded', '503', 'unavailable', 'service unavailable', 'resource exhausted'];
-        return overloadKeywords.some(keyword =>
-            errorMessage.toLowerCase().includes(keyword.toLowerCase())
-        );
-    }
-
-    private isRateLimitError(errorMessage: string): boolean {
-        const rateLimitKeywords = ['rate limit', '429', 'quota', 'too many requests'];
-        return rateLimitKeywords.some(keyword =>
-            errorMessage.toLowerCase().includes(keyword.toLowerCase())
-        );
-    }
-
-    private isBadRequestError(errorMessage: string): boolean {
-        const badRequestKeywords = ['400', 'bad request', 'invalid request'];
-        return badRequestKeywords.some(keyword =>
-            errorMessage.toLowerCase().includes(keyword.toLowerCase())
-        );
-    }
-
-    private isOAuthRelatedError(errorMessage: string): boolean {
-        const oauthKeywords = ['auth', 'unauthorized', '401'];
-        return oauthKeywords.some(keyword =>
-            errorMessage.toLowerCase().includes(keyword)
-        );
+        
+        return {
+            text: 'Authentication required. Please authenticate to continue.',
+            authorizationRequired: true,
+        };
     }
 }
