@@ -117,7 +117,7 @@ try {
   geminiService = new GeminiService(apiKey, mcpServiceUrl);
   logger.info('Gemini service initialized successfully');
 } catch (error) {
-  console.error('Failed to initialize services:', error);
+  logger.error('Failed to initialize services:', error);
   process.exit(1);
 }
 
@@ -410,7 +410,7 @@ const proxyRequest = async (req: express.Request, res: express.Response, endpoin
       return res.status(response.status).json(data);
     }
 
-    logger.info(`Successfully proxied request to ${fullUrl}`);
+    // logger.debug(`Successfully proxied request to ${fullUrl}`);
     res.json(data);
   } catch (error) {
     logger.error('Proxy request failed:', error);
@@ -525,7 +525,7 @@ if (process.env.NODE_ENV === 'development') {
     const start = Date.now();
     res.on('finish', () => {
       const duration = Date.now() - start;
-      console.log(`${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`);
+      logger.debug(`${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`);
     });
     next();
   });

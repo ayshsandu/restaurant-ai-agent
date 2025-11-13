@@ -2,6 +2,7 @@ import { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { OAuthClientMetadata, OAuthClientInformationMixed, OAuthTokens, AuthorizationServerMetadata, OAuthTokensSchema } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { AgentOAuthProvider } from './agentOAuthProvider.js';
 import { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Simple OAuth Provider implementing authorization code grant flow
@@ -69,7 +70,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
         if (clientInformation.client_secret) {
             this._clientSecret = clientInformation.client_secret;
         }
-        console.log('Client information saved: ', this._clientId);
+        logger.debug('Client information saved: ', this._clientId);
     }
 
     tokens(): OAuthTokens | undefined {
@@ -78,7 +79,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
 
     saveTokens(tokens: OAuthTokens): void {
         this._tokens = tokens;
-        console.log('OAuth tokens saved');
+        logger.debug('OAuth tokens saved');
     }
 
     /**
@@ -106,7 +107,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
      * Store the authorization URL for later retrieval
      */
     redirectToAuthorization(authorizationUrl: URL): void {
-        console.log('Authorization URL:', authorizationUrl.toString());
+        logger.debug('Authorization URL:', authorizationUrl.toString());
 
         // Add agentID as a parameter if agent provider exists
         if (this._agentProvider) {
@@ -203,13 +204,14 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
             body.client_secret = this._clientSecret;
         }
 
-        // Include agent identity token in the request if provided or available from agent provider
+        // Include agent token as the actor token in the request if provided or available from agent provider
+        // This will result in an OBO token for the agent
         const tokenToUse = agentToken || this._agentProvider?.getAgentTokens()?.access_token;
         if (tokenToUse) {
             body.actor_token = tokenToUse;
         }
 
-        console.log('Exchanging code for tokens with body:', body);
+        logger.debug('Exchanging code for tokens with body:', body);
 
         const response = await fetch(tokenEndpoint, {
             method: 'POST',
@@ -221,7 +223,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
         });
 
         //log response status and the content 
-        console.log('Token exchange response status:', response);
+        logger.debug('Token exchange response status:', response);
         if (!response.ok) {
             throw new Error(`Token exchange failed: ${response.status} ${response.statusText}`);
         }

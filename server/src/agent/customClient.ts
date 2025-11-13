@@ -1,5 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Request, Notification, Result } from "@modelcontextprotocol/sdk/types.js";
+import { logger } from '../utils/logger.js';
+import { error } from "console";
 
 /**
  * Custom MCP Client extending the base Client class
@@ -75,9 +77,9 @@ export class CustomClient extends Client {
    * Currently delegates to parent implementation
    */
   async listTools(params?: any, options?: any) {
-    console.log(`[CustomClient] Listing tools for session: ${this.getSessionId()}`);
+    logger.debug(`[CustomClient] Listing tools for session: ${this.getSessionId()}`);
     const result = await super.listTools(params, options);
-    console.log(`[CustomClient] Found ${result.tools?.length || 0} tools`);
+    logger.debug(`[CustomClient] Found ${result.tools?.length || 0} tools`);
     return result;
   }
 
@@ -86,15 +88,14 @@ export class CustomClient extends Client {
    * Currently delegates to parent implementation
    */
   async callTool(params: any, resultSchema?: any, options?: any) {
-    console.log(`[CustomClient] Calling tool: ${params.name} for session: ${this.getSessionId()}`);
-    console.log(`[CustomClient] Tool arguments:`, params.arguments);
+    console.log(`[CustomClient] Calling tool: ${params.name} for session: ${this.getSessionId()} with arguments: ${params.arguments}`);
 
     try {
       const result = await super.callTool(params, resultSchema, options);
-      console.log(`[CustomClient] Tool call completed successfully`);
+      logger.debug(`[CustomClient] Tool call completed successfully`);
       return result;
     } catch (error) {
-      console.error(`[CustomClient] Tool call failed:`, error);
+      logger.error(`[CustomClient] Tool call failed:`, error);
       throw error;
     }
   }

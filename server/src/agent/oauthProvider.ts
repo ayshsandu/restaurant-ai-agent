@@ -1,5 +1,6 @@
 import { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { OAuthClientMetadata, OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Authorization code grant flow state management
@@ -69,7 +70,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
     if (clientInformation.client_secret) {
       this._clientSecret = clientInformation.client_secret;
     }
-    console.log('Client information saved');
+    logger.debug('Client information saved');
   }
 
   tokens(): OAuthTokens | undefined {
@@ -78,7 +79,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
 
   saveTokens(tokens: OAuthTokens): void {
     this._tokens = tokens;
-    console.log('OAuth tokens saved');
+    logger.debug('OAuth tokens saved');
   }
 
   /**
@@ -209,7 +210,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
 
       return tokens;
     } catch (error) {
-      console.error('Token exchange error:', error);
+      logger.error('Token exchange error:', error);
       throw error;
     }
   }
@@ -221,18 +222,18 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
     const authState = this.pendingAuthStates.get(state);
 
     if (!authState) {
-      console.error(`Unknown state parameter: ${state}`);
+      logger.error(`Unknown state parameter: ${state}`);
       return;
     }
 
     try {
       // Exchange authorization code for tokens
-      console.log('Exchanging authorization code for tokens...');
+      logger.debug('Exchanging authorization code for tokens...');
       const tokens = await this.exchangeCodeForTokens(code, authState.codeVerifier);
 
       // Save the tokens
       this.saveTokens(tokens);
-      console.log('Tokens successfully obtained and saved');
+      logger.debug('Tokens successfully obtained and saved');
 
       // Clear timeout and remove from pending states
       clearTimeout(authState.timeout);
@@ -241,7 +242,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
       // Resolve the promise with the authorization code (for backward compatibility)
       authState.resolve(code);
     } catch (error) {
-      console.error('Failed to exchange authorization code for tokens:', error);
+      logger.error('Failed to exchange authorization code for tokens:', error);
 
       // Clear timeout and remove from pending states
       clearTimeout(authState.timeout);
@@ -259,7 +260,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
     const authState = this.pendingAuthStates.get(state);
 
     if (!authState) {
-      console.error(`Unknown state parameter in error: ${state}`);
+      logger.error(`Unknown state parameter in error: ${state}`);
       return;
     }
 
@@ -274,7 +275,7 @@ export class AuthorizationCodeOAuthProvider implements OAuthClientProvider {
   redirectToAuthorization(authorizationUrl: URL): void {
     // In a server environment, we typically return the URL to the client
     // or handle the redirect differently than in browser-based flows
-    console.log('Authorization URL:', authorizationUrl.toString());
+    logger.debug('Authorization URL:', authorizationUrl.toString());
 
     // For server-side implementation, you might want to:
     // 1. Return this URL to the client for redirection
