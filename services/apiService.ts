@@ -187,12 +187,12 @@ export class ApiService {
     });
   }
 
-  public async getCart(sessionId: string): Promise<CartResponse> {
-    return this.makeRequest(`/cart/${sessionId}`);
+  public async getCart(cartId: string): Promise<CartResponse> {
+    return this.makeRequest(`/cart/${cartId}`);
   }
 
-  public async addToCart(sessionId: string, itemId: string, quantity: number = 1): Promise<CartResponse> {
-    return this.makeRequest(`/cart/${sessionId}/items`, {
+  public async addToCart(cartId: string, itemId: string, quantity: number = 1): Promise<CartResponse> {
+    return this.makeRequest(`/cart/${cartId}/items`, {
       method: 'POST',
       body: JSON.stringify({
         item_id: itemId,
@@ -201,18 +201,18 @@ export class ApiService {
     });
   }
 
-  public async removeFromCart(sessionId: string, itemId: string): Promise<CartResponse> {
-    return this.makeRequest(`/cart/${sessionId}/items/${itemId}`, {
+  public async removeFromCart(cartId: string, itemId: string): Promise<CartResponse> {
+    return this.makeRequest(`/cart/${cartId}/items/${itemId}`, {
       method: 'DELETE',
     });
   }
 
   // Order API methods
-  public async createOrder(sessionId: string, customerInfo?: any, paymentInfo?: any): Promise<ApiOrder> {
+  public async createOrder(cartId: string, customerInfo?: any, paymentInfo?: any): Promise<ApiOrder> {
     return this.makeRequest('/orders', {
       method: 'POST',
       body: JSON.stringify({
-        session_id: sessionId,
+        session_id: cartId,
         customer_info: customerInfo,
         payment_info: paymentInfo
       }),

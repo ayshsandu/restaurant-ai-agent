@@ -176,7 +176,7 @@ const Chatbot: React.FC<ChatbotProps> = memo(({ isOpen, onClose }) => {
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-amber-50 rounded-lg shadow-2xl w-full max-w-2xl h-[600px] flex flex-col border border-gray-200">
+            <div className="bg-amber-50 rounded-lg shadow-2xl w-full max-w-4xl h-[750px] flex flex-col border border-gray-200">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-300 bg-white rounded-t-lg">
                     <div className="flex items-center gap-3">
