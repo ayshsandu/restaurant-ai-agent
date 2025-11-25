@@ -294,7 +294,7 @@ NODE_TLS_REJECT_UNAUTHORIZED=0  # Development only - disable SSL verification
 ### Frontend Environment Variables (`restaurant-ui/.env`)
 
 ```env
-VITE_BFF_BASE_URL=http://localhost:3001/api
+VITE_API_BASE_URL=http://localhost:3001/api
 ```
 
 ## 📡 API Endpoints

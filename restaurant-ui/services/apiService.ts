@@ -1,6 +1,6 @@
 // Configuration for the backend API - now points to our proxy server
-const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:3001/api';
-
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+console.log("API_BASE_URL:", API_BASE_URL);
 import { MenuItem, CartItem, Order, Customer } from '../types';
 
 // API Response interfaces based on the OpenAPI spec
@@ -70,8 +70,8 @@ export class ApiService {
   private retryDelay: number = 1000; // 1 second
 
   private constructor() {
-    console.log("API Service initialized with BFF_BASE_URL:", BFF_BASE_URL);
-    this.baseUrl = BFF_BASE_URL;
+    console.log("API Service initialized with BFF_BASE_URL:", API_BASE_URL);
+    this.baseUrl = API_BASE_URL;
   }
 
   public static getInstance(): ApiService {

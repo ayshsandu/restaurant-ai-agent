@@ -91,7 +91,7 @@ restaurant-ai-assistant/
 │   ├── .env.example
 │   └── .env                        # Your secrets (create from .example)
 ├── services/
-│   └── apiService.ts               # Frontend API client
+│   └── chatService.ts               # Frontend API client
 ├── components/                      # React components
 ├── App.tsx                         # Updated to use backend API
 └── setup-backend.sh               # Setup script
@@ -144,7 +144,6 @@ If MCP OAuth is configured, the following endpoints are available:
 
 ### 2. Updated Frontend
 - Removed direct Gemini API usage
-- Added `apiService.ts` to communicate with backend
 - Added connection status monitoring
 - Updated UI to show backend connection status
 
