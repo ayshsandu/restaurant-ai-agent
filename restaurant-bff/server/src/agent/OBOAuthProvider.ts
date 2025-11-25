@@ -1,8 +1,8 @@
 import { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { OAuthClientMetadata, OAuthClientInformationMixed, OAuthTokens, AuthorizationServerMetadata, OAuthTokensSchema } from '@modelcontextprotocol/sdk/shared/auth.js';
-import { AgentOAuthProvider } from './agentOAuthProvider.js';
+import { AgentOAuthProvider } from './agentOAuthProvider';
 import { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../utils/logger';
 
 /**
  * Simple OAuth Provider implementing authorization code grant flow

@@ -1,7 +1,7 @@
 import { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { OAuthClientMetadata, OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { randomBytes, createHash } from 'crypto';
-import { logger } from '../utils/logger.js';
+import { logger } from '../utils/logger';
 
 /**
  * Agent OAuth Provider implementing the special WSO2 Asgardeo agent authentication flow

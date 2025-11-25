@@ -1,10 +1,10 @@
 import { GoogleGenAI, Chat, mcpToTool } from '@google/genai';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { CustomClient } from './customClient.js';
-import { AuthorizationCodeOAuthProvider } from './OBOAuthProvider.js';
-import { AgentOAuthProvider } from './agentOAuthProvider.js';
-import { logger } from '../utils/logger.js';
-import { SYSTEM_INSTRUCTION } from './systemInstructions.js';
+import { CustomClient } from './customClient';
+import { AuthorizationCodeOAuthProvider } from './OBOAuthProvider';
+import { AgentOAuthProvider } from './agentOAuthProvider';
+import { logger } from '../utils/logger';
+import { SYSTEM_INSTRUCTION } from './systemInstructions';
 
 // ============================================================================
 // CONSTANTS & TYPES

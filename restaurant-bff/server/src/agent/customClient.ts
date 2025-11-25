@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Request, Notification, Result } from "@modelcontextprotocol/sdk/types.js";
-import { logger } from '../utils/logger.js';
+import { logger } from '../utils/logger';
 import { error } from "console";
 
 /**

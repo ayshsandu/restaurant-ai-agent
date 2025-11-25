@@ -39,7 +39,7 @@ npm run dev
 
 ## 🔧 Configuration
 
-### Environment Variables (server/.env)
+### Environment Variables (restaurant-bff/server/.env)
 ```env
 GOOGLE_AI_API_KEY=your_google_ai_api_key_here
 PORT=3001

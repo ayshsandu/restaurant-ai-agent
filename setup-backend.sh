@@ -5,7 +5,7 @@
 echo "🚀 Setting up Restaurant AI Assistant Backend..."
 
 # Navigate to server directory
-cd server
+cd restaurant-bff/server
 
 # Check if node_modules exists
 if [ ! -d "node_modules" ]; then
@@ -21,7 +21,7 @@ if [ ! -f ".env" ]; then
     cp .env.example .env
     echo ""
     echo "⚠️  IMPORTANT: Please update the .env file with your Google AI API key!"
-    echo "   Edit server/.env and set GOOGLE_AI_API_KEY to your actual API key"
+    echo "   Edit restaurant-bff/server/.env and set GOOGLE_AI_API_KEY to your actual API key"
     echo ""
     echo "   You can get an API key from: https://makersuite.google.com/app/apikey"
     echo ""
@@ -37,7 +37,7 @@ echo ""
 echo "✅ Backend setup complete!"
 echo ""
 echo "📝 Next steps:"
-echo "   1. Update server/.env with your Google AI API key"
-echo "   2. Start the backend: npm run dev (from the server directory)"
-echo "   3. Start the frontend: npm run dev (from the main directory)"
+echo "   1. Update restaurant-bff/server/.env with your Google AI API key"
+echo "   2. Start the backend: npm run dev (from the restaurant-bff/server directory)"
+echo "   3. Start the frontend: npm run dev (from the restaurant-ui directory)"
 echo ""

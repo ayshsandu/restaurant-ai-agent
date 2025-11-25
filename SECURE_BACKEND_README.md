@@ -33,7 +33,7 @@ cp .env.example .env
 
 ### 2. Configure Environment Variables
 
-Edit `server/.env` and add your Google AI API key:
+Edit `restaurant-bff/server/.env` and add your Google AI API key:
 
 ```env
 GOOGLE_AI_API_KEY=your_actual_google_ai_api_key_here
@@ -82,12 +82,13 @@ The frontend will start on `http://localhost:5173`
 
 ```
 restaurant-ai-assistant/
-├── server/                          # Backend (secure)
-│   ├── src/
-│   │   ├── server.ts               # Express server
-│   │   └── services/
-│   │       └── geminiService.ts    # AI service (server-side)
-│   ├── package.json
+├── restaurant-bff/                          # Backend (secure)
+│   ├── server/
+│   │   ├── src/
+│   │   │   ├── server.ts               # Express server
+│   │   │   └── services/
+│   │   │       └── geminiService.ts    # AI service (server-side)
+│   │   ├── package.json
 │   ├── .env.example
 │   └── .env                        # Your secrets (create from .example)
 ├── services/
@@ -136,7 +137,7 @@ If MCP OAuth is configured, the following endpoints are available:
 
 ## Key Changes Made
 
-### 1. Created Secure Backend (`server/`)
+### 1. Created Secure Backend (`restaurant-bff/server/`)
 - Express.js server with TypeScript
 - Google AI API key stored securely in environment variables
 - CORS and rate limiting for security
@@ -205,7 +206,7 @@ npm run build        # Build for production
 ## Troubleshooting
 
 ### Backend Won't Start
-- Check if `GOOGLE_AI_API_KEY` is set in `server/.env`
+- Check if `GOOGLE_AI_API_KEY` is set in `restaurant-bff/server/.env`
 - Ensure port 3001 is available
 - Check the console for error messages
 

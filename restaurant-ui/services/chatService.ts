@@ -1,5 +1,5 @@
 // Configuration for the backend API
-const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:8000';
+const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:3001/api';
 console.log("BFF_BASE_URL:", BFF_BASE_URL);
 export interface ChatResponse {
   success: boolean;
