@@ -12,7 +12,6 @@ This project has been updated to use a secure backend architecture where the Goo
 
 ✅ **Google AI API key is now secure on the backend**
 ✅ **CORS protection** 
-✅ **Rate limiting** to prevent abuse
 ✅ **Request validation** and sanitization
 ✅ **Error handling** without exposing sensitive info
 ✅ **Environment variable management**
