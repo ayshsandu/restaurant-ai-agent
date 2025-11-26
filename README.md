@@ -199,6 +199,9 @@ curl -H "Authorization: Bearer <token>" \
 - **npm** or **yarn** package manager
 - **Google AI API Key** ([Get from Google AI Studio](https://makersuite.google.com/app/apikey))
 - **Identity Provider** (Asgardeo or WSO2 Identity Server) for MCP authentication
+     - Create an MCP Client application with appropriate redirect URIs (e.g., `http://localhost:3001/api/oauth/callback`)
+     - Use the respective client ID in the backend `.env`
+     - Enable *App-Native Authentication* from the "Advanced" Settings tab in the MCP Client configuration.
 
 ### Automated Setup
 
