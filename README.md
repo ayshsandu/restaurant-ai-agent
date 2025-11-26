@@ -17,74 +17,85 @@ A modern, secure restaurant AI assistant built with React and Node.js, featuring
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Frontend      │    │   Backend       │    │   External APIs │
-│   (React/Vite)  │◄──►│   (Node/Express)│◄──►│   - Gemini AI   │
-│   Port: 3000    │    │   Port: 3001    │    │   - Restaurant  │
-└─────────────────┘    └─────────────────┘    │     API (8000) │
-                                              └─────────────────┘
+│       UI        │    │      BFF        │    │     AGENT       │
+│   (React/Vite)  │◄──►│  (Node/Express) │◄──►│ (TypeScript)    │
+│   Port: 3000    │    │   Port: 3001    │    │                 │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                                           │    │
+         │                                           │    │
+         │                      ┌────────────────────┘    │
+         ▼                      ▼                         ▼
+┌─────────────────┐    ┌─────────────────┐         ┌─────────────────┐
+│   REST Backend  │    │      MCP        │         │   AI MODEL      │
+│   (Direct Call) │    │   (Tools)       │         │   (Gemini AI)   │
+│   Port: 8000    │    │   Port: 8000    │         │                 │
+└─────────────────┘    └─────────────────┘         └─────────────────┘
 ```
+
+### Data Flow
+
+1. **UI → BFF**: User interactions (chat, menu browsing, cart operations)
+2. **BFF → Agent**: Chat messages processed by Gemini AI with MCP tools
+3. **Agent → MCP**: AI calls restaurant tools for menu/cart/order data
+4. **UI → REST**: Direct API calls for menu, cart, and order operations
 
 ### Components
 
-- **Frontend** (`restaurant-ui/`): React + TypeScript + Vite
-  - Modern UI with responsive design
-  - Real-time chat interface
-  - Cart and checkout system
-  - Order tracking
+- **UI** (`restaurant-ui/`): React + TypeScript + Vite
+  - Modern responsive interface
+  - Real-time chat with AI assistant
+  - Menu browsing and cart management
+  - Order tracking and checkout
 
-- **Backend** (`restaurant-bff/server/`): Node.js + Express + TypeScript
-  - RESTful API endpoints
+- **BFF (Backend for Frontend)** (`restaurant-bff/`): Node.js + Express + TypeScript
+  - API gateway for Agent interaction
+  - Chat processing with session management
+
+- **Agent** (`restaurant-bff/server/src/agent/`): AI processing layer
   - Google Gemini AI integration
-  - Session management
-  - Proxy to restaurant backend API
+  - MCP client for tool calling
+  - OAuth authentication handling
+  - Session and conversation management
 
-- **AI Service**: Google Gemini API with MCP (Model Context Protocol)
-  - Intelligent conversation handling
-  - Context-aware responses
-  - OAuth integration for enhanced features
+- **MCP Server** (`restaurant-mcp-server/`): Model Context Protocol server
+  - AI tools for restaurant operations
+  - REST API for direct data access
+  - OAuth 2.0 authentication
+  - Menu, cart, and order management
+  - Also contatin **RESTBackend**: API server
+    - Provides REST endpoints
+    - Handles menu data, cart sessions, orders
+    - Secure authentication and authorization
 
-- **MCP Server** (`restaurant-mcp-server/`): Restaurant-specific AI tools
-  - Menu browsing and filtering tools
-  - Shopping cart management
-  - Order processing and tracking
-  - Secure authentication with Asgardeo/WSO2
+## 🔧 Model Context Protocol (MCP) & REST API Server
 
-## 🔧 Model Context Protocol (MCP) Server
+The Restaurant AI Assistant uses a combined **MCP Server** that provides both AI tools via the Model Context Protocol and REST API endpoints for direct data access. The MCP server acts as the central backend service handling restaurant business logic.
 
-The Restaurant AI Assistant uses the **Model Context Protocol (MCP)** to provide AI agents with secure, structured access to restaurant operations. The MCP server acts as a bridge between the AI chatbot and restaurant business logic.
-
-### MCP Architecture
+### Architecture Overview
 
 ```
-AI Assistant → MCP Client → MCP Server → Restaurant Data/API
-     ↓              ↓              ↓              ↓
-  Gemini AI    Streamable HTTP   Express Server   Menu/Cart/Order DB
+UI (Direct) → REST API → Restaurant Data
+UI (Chat)   → BFF → Agent → MCP Server → Restaurant Data
 ```
+
+### MCP Tools for AI Assistant
+
+The MCP server provides the following tools that the AI can use for intelligent restaurant operations:
 
 ### MCP Server Features
 
-#### 🛠️ Available Tools
+The MCP server serves dual purposes:
 
-The MCP server provides the following tools that the AI can use:
+#### 🤖 AI Tools (MCP Protocol)
+- **Menu Management**: `get_menu_categories`, `list_items_by_category`, `get_item_details`, `find_items_by_criteria`
+- **Cart Operations**: `create_cart`, `add_to_cart`, `remove_from_cart`, `get_cart`
+- **Order Management**: `checkout`, `get_order_status`, `list_orders`, `get_my_orders`, `add_order_note`
 
-**Menu Management:**
-- `get_menu_categories` - Get all menu categories
-- `list_items_by_category` - Browse items in a specific category
-- `get_item_details` - Get detailed information about a menu item
-- `find_items_by_criteria` - Filter items by dietary preferences, price, allergens
-
-**Cart Operations:**
-- `create_cart` - Create a new shopping cart session
-- `add_to_cart` - Add items to cart with quantity
-- `remove_from_cart` - Remove items from cart
-- `get_cart` - View current cart contents and total
-
-**Order Management:**
-- `checkout` - Process cart into confirmed order
-- `get_order_status` - Check order status and details
-- `list_orders` - View all orders (admin)
-- `get_my_orders` - Get user's order history
-- `add_order_note` - Add special instructions to order
+#### 🌐 REST API Endpoints
+- **Menu**: `GET /api/menu/categories`, `GET /api/menu/items`
+- **Cart**: `POST /api/cart`, `GET /api/cart/:sessionId`, `POST /api/cart/:sessionId/items`
+- **Orders**: `POST /api/orders`, `GET /api/orders/:orderId`
+- **Health**: `GET /health`, `GET /api-docs`
 
 #### 🔐 Security & Authentication
 
@@ -199,13 +210,13 @@ cd restaurant-ai-assistant
 # Run the automated setup script for backend
 ./setup-backend.sh
 
-# Setup MCP Server
+# Setup MCP Server (provides REST API + MCP tools)
 cd restaurant-mcp-server
 npm install
 cp .env.example .env  # Configure authentication
 npm run dev
 
-# In another terminal, start the backend
+# In another terminal, start the BFF (Backend for Frontend)
 cd ../restaurant-bff/server
 npm run dev
 
@@ -216,25 +227,24 @@ npm run dev
 
 ### Manual Setup
 
-#### 1. MCP Server Setup
+#### 1. MCP Server Setup (REST API + AI Tools)
 
 ```bash
 cd restaurant-mcp-server
 npm install
 cp .env.example .env
 # Configure BASE_URL for your identity provider
-npm run dev
+npm run dev  # Runs on port 8000
 ```
 
-#### 2. Backend Setup
+#### 2. BFF Setup (AI Chat Processing)
 
 ```bash
 cd restaurant-bff/server
 npm install
 cp .env.example .env
-# Edit .env with your API keys (see Configuration section)
-npm run build
-npm run dev
+# Configure GOOGLE_AI_API_KEY and MCP_SERVER_URL
+npm run dev  # Runs on port 3001
 ```
 
 #### 3. Frontend Setup
@@ -242,15 +252,16 @@ npm run dev
 ```bash
 cd restaurant-ui
 npm install
-npm run dev
+npm run dev  # Runs on port 3000
 ```
 
 #### 4. Access the Application
 
 - **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:3001/api
-- **MCP Server**: http://localhost:8000/mcp
-- **Health Check**: http://localhost:3001/api/health
+- **BFF API**: http://localhost:3001/api
+- **REST Backend**: http://localhost:8000/api
+- **MCP Tools**: http://localhost:8000/mcp
+- **API Docs**: http://localhost:8000/api-docs
 
 ## 🔧 Configuration
 
@@ -260,11 +271,11 @@ npm run dev
 # Required
 GOOGLE_AI_API_KEY=your_google_ai_api_key_here
 MCP_SERVER_URL=http://localhost:8000/mcp
+BACKEND_API_URL=http://localhost:8000/api
 
 # Optional
 PORT=3001
 NODE_ENV=development
-BACKEND_API_URL=http://localhost:8000/api
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 
 # OAuth Configuration (if using MCP with OAuth)
@@ -294,12 +305,16 @@ NODE_TLS_REJECT_UNAUTHORIZED=0  # Development only - disable SSL verification
 ### Frontend Environment Variables (`restaurant-ui/.env`)
 
 ```env
-VITE_API_BASE_URL=http://localhost:3001/api
+# BFF (Backend for Frontend) - for chat functionality
+VITE_BFF_BASE_URL=http://localhost:3001/api
+
+# REST Backend (MCP Server) - for menu, cart, orders
+VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
 ## 📡 API Endpoints
 
-### Core Endpoints
+### BFF (Backend for Frontend) Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -307,23 +322,22 @@ VITE_API_BASE_URL=http://localhost:3001/api
 | `POST` | `/api/chat` | Send chat message to AI assistant |
 | `GET` | `/api/oauth/callback` | OAuth authorization callback |
 
-### MCP Server Endpoints
+### REST Backend (MCP Server) Endpoints
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `POST` | `/mcp` | MCP protocol endpoint for AI tools | ✅ OAuth |
 | `GET` | `/health` | MCP server health check | ❌ |
 | `GET` | `/api-docs` | Swagger API documentation | ❌ |
-
-### Proxied Restaurant API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/menu/categories` | Get menu categories |
-| `GET` | `/api/menu/items` | Get menu items with filters |
-| `POST` | `/api/cart` | Create shopping cart |
-| `GET` | `/api/cart/:sessionId` | Get cart contents |
-| `POST` | `/api/orders` | Place new order |
+| `GET` | `/api/menu/categories` | Get menu categories | ❌ |
+| `GET` | `/api/menu/items` | Get menu items with filters | ❌ |
+| `POST` | `/api/cart` | Create shopping cart | ❌ |
+| `GET` | `/api/cart/:sessionId` | Get cart contents | ❌ |
+| `POST` | `/api/cart/:sessionId/items` | Add item to cart | ❌ |
+| `PUT` | `/api/cart/:sessionId/items/:itemId` | Update cart item | ❌ |
+| `DELETE` | `/api/cart/:sessionId/items/:itemId` | Remove cart item | ❌ |
+| `POST` | `/api/orders` | Place new order | ❌ |
+| `GET` | `/api/orders/:orderId` | Get order details | ❌ |
+| `POST` | `/mcp` | MCP protocol endpoint for AI tools | ✅ OAuth |
 
 ### Request/Response Examples
 
@@ -398,13 +412,13 @@ npm run preview      # Preview production build locally
 
 ### Development Workflow
 
-1. **Start MCP Server** (provides AI tools):
+1. **Start MCP Server** (provides REST API and AI tools):
    ```bash
    cd restaurant-mcp-server
    npm run dev  # Runs on port 8000
    ```
 
-2. **Start Backend Server** (AI chat API):
+2. **Start BFF Server** (handles chat and API proxying):
    ```bash
    cd restaurant-bff/server
    npm run dev  # Runs on port 3001
@@ -418,16 +432,19 @@ npm run preview      # Preview production build locally
 
 4. **Test Integration**:
    ```bash
-   # Test MCP server health
+   # Test MCP/REST server health
    curl http://localhost:8000/health
 
-   # Test backend health
+   # Test BFF health
    curl http://localhost:3001/api/health
 
-   # Test chat with MCP integration
+   # Test chat with AI assistant
    curl -X POST http://localhost:3001/api/chat \
      -H "Content-Type: application/json" \
      -d '{"message": "Show me the menu"}'
+
+   # Test direct REST API call
+   curl http://localhost:8000/api/menu/categories
    ```
 
 ## 🔒 Security Features
@@ -468,72 +485,68 @@ npm run build  # Includes ESLint checks
 
 ### Common Issues
 
-#### MCP Server Connection Issues
+#### MCP/REST Server Connection Issues
 ```bash
 # Check if MCP server is running
 curl http://localhost:8000/health
 
-# Verify MCP endpoint is accessible
+# Verify REST API endpoints are accessible
+curl http://localhost:8000/api/menu/categories
+
+# Verify MCP endpoint is accessible (requires auth)
 curl -H "Authorization: Bearer <token>" http://localhost:8000/mcp
 
 # Check MCP server logs for authentication errors
 cd restaurant-mcp-server && npm run dev
 ```
 
-#### Authentication Problems
+#### BFF Server Issues
 ```bash
-# Ensure BASE_URL is correctly configured in MCP server .env
-# For Asgardeo: https://api.asgardeo.io/t/your-tenant
-# For WSO2: https://localhost:9443
-
-# Check OAuth configuration in backend .env
-grep OAUTH restaurant-bff/server/.env
-```
-
-#### Backend Won't Start
-```bash
-# Check if .env file exists and has required variables
-cd restaurant-bff/server
-ls -la .env
-
-# Verify Google AI API key is set
-grep GOOGLE_AI_API_KEY .env
-
-# Check for build errors
-npm run build
-
-# Check Node.js version
-node --version  # Should be 18+
-```
-
-#### Frontend Connection Issues
-```bash
-# Verify backend is running
+# Check if BFF is running
 curl http://localhost:3001/api/health
 
-# Check CORS configuration
-# Ensure ALLOWED_ORIGINS includes your frontend URL
+# Verify MCP server URL configuration
+grep MCP_SERVER_URL restaurant-bff/server/.env
+
+# Check BFF logs for connection errors
+cd restaurant-bff/server && npm run dev
 ```
 
 #### AI Chat Not Working
 ```bash
-# Verify API key is valid
-# Check backend logs for API errors
+# Verify API key is valid in BFF
+grep GOOGLE_AI_API_KEY restaurant-bff/server/.env
+
+# Check BFF logs for API errors
+cd restaurant-bff/server && npm run dev
+
 # Ensure MCP service is running on port 8000
 curl http://localhost:8000/health
 
-# Test MCP tool availability
+# Test MCP tool availability (requires auth)
 curl -X POST http://localhost:8000/mcp \
   -H "Authorization: Bearer <token>" \
   -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
+
+#### Restaurant API Not Working
+```bash
+# Test direct REST API calls
+curl http://localhost:8000/api/menu/categories
+
+# Check MCP server logs
+cd restaurant-mcp-server && npm run dev
+
+# Verify frontend is configured to call correct API
+grep VITE_API_BASE_URL restaurant-ui/.env
 ```
 
 #### Port Conflicts
 ```bash
 # Find what's using the ports
 lsof -i :3000  # Frontend
-lsof -i :3001  # Backend
-lsof -i :8000  # MCP Server
+lsof -i :3001  # BFF (Backend for Frontend)
+lsof -i :8000  # MCP/REST Server
 
 # Kill process if needed
 kill -9 <PID>
